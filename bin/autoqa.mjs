@@ -2,6 +2,7 @@
 // autoqa: runs Claude Code headless as a QA agent against a target web app.
 //
 //   autoqa generate --url <target> [--headed] [--model <id>] [--reset]
+//   autoqa heal     --url <target> [--headed] [--model <id>]
 //   autoqa test     [--url <target>]
 //
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
@@ -76,6 +77,22 @@ Task: explore this app you have never seen, then write and run an automated Play
 3. Load the playwright-conventions skill. Write page objects, fixtures, data and specs under generated-tests/. Tests use relative URLs; the base URL comes from playwright.config.ts. Tag viewport-specific tests with @mobile in the title.
 4. Run \`npx playwright test\`. For every failure, load the failure-triage skill and classify it. Fix test mistakes. Do not change tests to hide real bugs; write a bug report in runs/${id}/bugs/ instead.
 5. Write runs/${id}/report.md: suite summary (tests, passed, failed), what each failure means, the bug list with severity, and anything you chose not to test.
+
+Keep narrating in one short sentence before each meaningful step.`;
+}
+
+function healPrompt({ target, id }) {
+  return `You are the AutoQA agent. Target app: ${target}
+Run id: ${id}. Write all run output to runs/${id}/.
+
+Task: the existing Playwright suite in generated-tests/ was green on an earlier version of this app. The app has changed since. Run the suite, work out why each test fails, repair what is broken in the tests, and report what is broken in the app.
+
+1. Run \`npx playwright test\`. List every failing test.
+2. Load the failure-triage skill. For each failure, open the app with the Playwright browser tools and reproduce it. Classify it with evidence.
+3. Broken locator, timing or test data: repair it. Fix the page object, not the spec, when the locator lives there. Load the playwright-conventions skill first and keep its house style. Change only what the evidence shows has changed.
+4. Real bug: do not touch the test's assertions. Write a bug report in runs/${id}/bugs/.
+5. Run the full suite again. Every remaining failure must be a real bug you reported.
+6. Write runs/${id}/heal-report.md: each failure, its classification and evidence, the exact locator changes (before and after), the bug list with severity, and the final pass/fail count.
 
 Keep narrating in one short sentence before each meaningful step.`;
 }
@@ -213,6 +230,14 @@ async function main() {
     );
   }
 
+  if (command === 'heal') {
+    const id = runId(command);
+    console.log(`AutoQA heal → ${target}  (run ${id})`);
+    process.exit(
+      await runAgent({ prompt: healPrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+    );
+  }
+
   if (command === 'test') {
     const child = spawn('npx', ['playwright', 'test'], {
       cwd: ROOT,
@@ -226,6 +251,7 @@ async function main() {
 
   console.log(`Usage:
   autoqa generate --url <target> [--headed] [--reset] [--model <id>]
+  autoqa heal --url <target> [--headed] [--model <id>]
   autoqa test [--url <target>]`);
 }
 

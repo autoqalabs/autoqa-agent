@@ -5,6 +5,7 @@
   "scripts": {
     "generate": "node bin/autoqa.mjs generate",
     "generate:headed": "node bin/autoqa.mjs generate --headed",
+    "heal": "node bin/autoqa.mjs heal",
     "test": "node bin/autoqa.mjs test",
     "report": "npx playwright show-report"
   },
