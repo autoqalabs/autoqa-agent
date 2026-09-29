@@ -1,0 +1,21 @@
+{
+  "name": "autoqa-agent",
+  "version": "0.1.0",
+  "description": "AutoQALabs agentic testing demo: Claude Code explores a web app, writes Playwright tests and reports bugs.",
+  "scripts": {
+    "generate": "node bin/autoqa.mjs generate",
+    "generate:headed": "node bin/autoqa.mjs generate --headed",
+    "test": "node bin/autoqa.mjs test",
+    "report": "npx playwright show-report"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "devDependencies": {
+    "@playwright/mcp": "^0.0.83",
+    "@playwright/test": "^1.63.0"
+  },
+  "private": true,
+  "bin": {
+    "autoqa": "bin/autoqa.mjs"
+  }
+}

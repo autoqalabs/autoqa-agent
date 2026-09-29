@@ -1,0 +1,10 @@
+node_modules/
+.env
+playwright-report/
+test-results/
+# per-run browser artifacts (screenshots, traces) are large; reports and events stay
+runs/*/browser/
+# machine-specific run files: absolute local paths, never published
+runs/*/events.jsonl
+runs/*/mcp.json
+runs/*/settings.json
