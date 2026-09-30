@@ -31,7 +31,7 @@ export class CheckoutPage {
     this.cardNumber = main.getByLabel('Card number');
     this.expiry = main.getByLabel('Expiry (MM/YY)');
     this.cvc = main.getByLabel('Security code');
-    this.submitButton = main.getByRole('button', { name: 'Place order', exact: true });
+    this.submitButton = main.getByRole('button', { name: 'Checkout', exact: true });
     this.formAlert = main.getByRole('alert');
     this.summary = new OrderSummary(
       page,
