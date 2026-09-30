@@ -4,9 +4,12 @@
   "description": "AutoQALabs agentic testing demo: Claude Code explores a web app, writes Playwright tests and reports bugs.",
   "scripts": {
     "generate": "node bin/autoqa.mjs generate",
-    "generate:headed": "node bin/autoqa.mjs generate --headed",
+    "generate:demo": "node bin/autoqa.mjs generate --headed --panel",
     "heal": "node bin/autoqa.mjs heal",
+    "heal:demo": "node bin/autoqa.mjs heal --headed --panel",
+    "panel": "node bin/panel.mjs",
     "test": "node bin/autoqa.mjs test",
+    "test:ui": "playwright test --ui",
     "report": "npx playwright show-report"
   },
   "license": "UNLICENSED",

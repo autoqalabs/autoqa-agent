@@ -24,6 +24,8 @@ This repo is an AI testing agent. It is driven by Claude Code in headless mode (
 
 ## Commands
 
-- Run the generated suite: `npx playwright test`
+Run tests with the Bash tool and exactly these commands. The working directory is already the repo root and `TARGET_URL` is already set, so never add `cd`, environment variables, pipes (`| tail`), `&&` or redirects: anything extra is blocked and wastes a turn. For failure details, read `playwright-report/results.json` with the Read or Grep tool instead of post-processing output.
+
+- Run the generated suite: `npx playwright test` (do not pass `--reporter`: it replaces the JSON report you read failures from)
 - One spec: `npx playwright test generated-tests/specs/<file>.spec.ts`
 - Mobile project only: `npx playwright test --project=mobile`

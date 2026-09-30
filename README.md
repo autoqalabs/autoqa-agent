@@ -27,11 +27,24 @@ npm install
 npx playwright install chromium
 
 npm run generate                      # explore + write + run tests (headless)
-npm run generate:headed               # same, with a visible browser for recording
+npm run generate:demo                 # same, with a visible browser and the live panel
+npm run heal                          # re-run the suite on a changed app, repair tests, report bugs
+npm run heal:demo                     # same, with a visible browser and the live panel
 node bin/autoqa.mjs generate --reset  # reset the demo store first (needs DEMO_ADMIN_TOKEN)
 npm test                              # replay the generated suite, no AI involved
+npm run test:ui                       # same, in Playwright UI mode
 npm run report                        # open the HTML report
+npm run panel                         # open the live panel on its own (follows the newest run)
 ```
+
+## Live panel
+
+`--panel` (used by the `:demo` scripts) opens a local page at `http://localhost:4400` that shows each step the agent takes as it happens:
+- its narration;
+- every browser action, file edit (with the before and after) and test run;
+- the latest pass/fail count, the bug reports it files and the files it changed.
+
+The page reads `runs/<run-id>/events.jsonl`, so choosing a past run in its menu replays it. Local paths and the machine's user name are stripped before anything reaches the page.
 
 Copy `.env.example` to `.env` to set `TARGET_URL` or the demo store token. The token is used only by the runner for resets and is removed from the agent's environment.
 

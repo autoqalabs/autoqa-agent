@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // autoqa: runs Claude Code headless as a QA agent against a target web app.
 //
-//   autoqa generate --url <target> [--headed] [--model <id>] [--reset]
-//   autoqa heal     --url <target> [--headed] [--model <id>]
+//   autoqa generate --url <target> [--headed] [--panel] [--model <id>] [--reset]
+//   autoqa heal     --url <target> [--headed] [--panel] [--model <id>]
 //   autoqa test     [--url <target>]
 //
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { openInBrowser, startPanel } from './panel.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_URL = 'https://autoqalabs-demo-store.vercel.app';
@@ -158,7 +159,8 @@ function runAgent({ prompt, target, id, headed, model }) {
             'Bash(npx playwright test:*)',
             'Bash(npx playwright show-report:*)',
           ],
-          deny: ['WebFetch', 'WebSearch'],
+          // One shell only, so the agent's test commands match the rules in CLAUDE.md.
+          deny: ['WebFetch', 'WebSearch', 'PowerShell'],
         },
       },
       null,
@@ -216,6 +218,21 @@ function runAgent({ prompt, target, id, headed, model }) {
 
 // ---------- commands ----------
 
+// With --panel, open the live reasoning panel before the agent starts and keep
+// it up after the run so the final state stays on screen.
+async function withPanel(opts, run) {
+  if (!opts.panel) return run();
+  const port = Number(process.env.PANEL_PORT ?? 4400);
+  await startPanel({ port, waitForNew: true });
+  const url = `http://localhost:${port}/`;
+  console.log(`  live panel: ${url}`);
+  openInBrowser(url);
+  const code = await run();
+  console.log(dim('Panel still open. Press Ctrl+C to exit.'));
+  void code;
+  return new Promise(() => {});
+}
+
 async function main() {
   loadDotEnv();
   const { command, opts } = parseArgs(process.argv.slice(2));
@@ -226,7 +243,9 @@ async function main() {
     console.log(`AutoQA generate → ${target}  (run ${id})`);
     if (opts.reset) await resetDemoStore(target);
     process.exit(
-      await runAgent({ prompt: generatePrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+      await withPanel(opts, () =>
+        runAgent({ prompt: generatePrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+      ),
     );
   }
 
@@ -234,7 +253,9 @@ async function main() {
     const id = runId(command);
     console.log(`AutoQA heal → ${target}  (run ${id})`);
     process.exit(
-      await runAgent({ prompt: healPrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+      await withPanel(opts, () =>
+        runAgent({ prompt: healPrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+      ),
     );
   }
 
@@ -250,8 +271,8 @@ async function main() {
   }
 
   console.log(`Usage:
-  autoqa generate --url <target> [--headed] [--reset] [--model <id>]
-  autoqa heal --url <target> [--headed] [--model <id>]
+  autoqa generate --url <target> [--headed] [--panel] [--reset] [--model <id>]
+  autoqa heal --url <target> [--headed] [--panel] [--model <id>]
   autoqa test [--url <target>]`);
 }
 
