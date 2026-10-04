@@ -101,6 +101,8 @@ How the credentials are handled:
 
 This keeps credentials out of the agent's context, the logs and the repo. It is not a hard security boundary: the tests the agent writes do receive the password in order to sign in. Playwright traces of failed tests in `test-results/` (ignored by git) can also contain what was typed. So use a low-privilege test account on a test environment, never a real user's or an admin's.
 
+**Apps that call another host.** The agent's browser only reaches the target's own address. If the app talks to an API on another host (say `api.example.com`), sign-in and data loading fail with a network error until you allow it: set `ALLOWED_ORIGINS=https://api.example.com` in `.env` (commas between several), or pass `--allow`. `check-login` reports the blocked host by name.
+
 Limits: sign-in that needs a CAPTCHA, a one-time code (2FA) or an email link is not supported, and neither is sign-in through another site (Google, Microsoft), because the browser is locked to the target's address. One test account per run. In Playwright UI mode, tick the `setup` project in the filter once so the sign-in step runs.
 
 ## Live panel

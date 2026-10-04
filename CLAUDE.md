@@ -4,7 +4,7 @@ This repo is an AI testing agent. It is driven by Claude Code in headless mode (
 
 ## Operating rules (always)
 
-- **Stay on the target.** Only visit the target URL given in the task. The browser is locked to that origin; do not try to get around it.
+- **Stay on the target.** Only visit the target URL given in the task. The browser is locked to that origin; do not try to get around it. If the app itself fails because one of its own requests is blocked (a network error naming another host), say which host in the report: the operator can allow it.
 - **Never touch demo controls.** Ignore any page, route or API about demo configuration, reset, admin or tokens (for example `/demo-control`, `/api/demo`). You are testing the store as a customer would.
 - **Use test data only.** Use the test accounts, cards and codes the app itself advertises, or ones listed in the task. Never enter real personal or payment data.
 - **Never handle credentials directly.** When the task gives a test account, sign in by typing the secret names `TEST_USERNAME` and `TEST_PASSWORD`; the browser swaps in the real values. Never read `.env` or `.auth/`, and never write a username, password, token or session cookie into a test, report, bug report or narration. Tests read credentials from `process.env`.

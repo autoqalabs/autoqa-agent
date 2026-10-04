@@ -11,6 +11,10 @@
 // to the browser as secrets and to the test process as environment variables;
 // the agent only ever sees their names.
 //
+// The browser is locked to the target's origin. If the app calls an API or
+// loads assets from another host, list those in ALLOWED_ORIGINS in .env (or
+// --allow), separated by commas.
+//
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
 // the live reasoning panel reads, plus whatever the agent writes there.
 
@@ -70,6 +74,22 @@ async function resetDemoStore(target) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Store reset failed: ${res.status} ${JSON.stringify(body)}`);
   console.log(`  store reset, running UI ${body.config?.version ?? '?'}`);
+}
+
+// ---------- extra origins (optional) ----------
+
+// Hosts besides the target that the browser may reach, such as the app's API.
+function extraOrigins() {
+  return (process.env.ALLOWED_ORIGINS ?? '')
+    .split(/[,;\s]+/)
+    .filter(Boolean)
+    .map((value) => {
+      try {
+        return new URL(value.includes('://') ? value : `https://${value}`).origin;
+      } catch {
+        throw new Error(`ALLOWED_ORIGINS has an invalid entry: ${value}`);
+      }
+    });
 }
 
 // ---------- test account (optional) ----------
@@ -206,10 +226,11 @@ function runAgent({ prompt, target, id, headed, model, login, onResult }) {
   mkdirSync(path.join(runDir, 'bugs'), { recursive: true });
 
   const origin = new URL(target).origin;
+  const origins = [origin, ...extraOrigins()].filter((o, i, all) => all.indexOf(o) === i);
   const mcpArgs = [
     path.join(ROOT, 'node_modules', '@playwright', 'mcp', 'cli.js'),
     '--isolated',
-    `--allowed-origins=${origin}`,
+    `--allowed-origins=${origins.join(';')}`,
     `--output-dir=${path.join(runDir, 'browser')}`,
     '--viewport-size=1440,900',
   ];
@@ -323,6 +344,8 @@ async function main() {
   loadDotEnv();
   const { command, opts } = parseArgs(process.argv.slice(2));
   const target = typeof opts.url === 'string' ? opts.url : process.env.TARGET_URL ?? DEFAULT_URL;
+  if (typeof opts.allow === 'string') process.env.ALLOWED_ORIGINS = opts.allow;
+  if (extraOrigins().length) console.log(`  also allowed: ${extraOrigins().join(', ')}`);
 
   if (command === 'generate') {
     const id = runId(command);
@@ -381,7 +404,8 @@ async function main() {
   autoqa check-login --url <target> [--headed]
   autoqa test [--url <target>]
 
-Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).`);
+Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).
+Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.`);
 }
 
 main().catch((error) => {
