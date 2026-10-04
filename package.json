@@ -7,6 +7,7 @@
     "generate:demo": "node bin/autoqa.mjs generate --headed --panel",
     "heal": "node bin/autoqa.mjs heal",
     "heal:demo": "node bin/autoqa.mjs heal --headed --panel",
+    "check-login": "node bin/autoqa.mjs check-login --headed",
     "panel": "node bin/panel.mjs",
     "test": "node bin/autoqa.mjs test",
     "test:ui": "playwright test --ui",

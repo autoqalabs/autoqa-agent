@@ -41,6 +41,8 @@ cp .env.example .env        # Windows cmd: copy .env.example .env
 
 **3. Configure `.env`**
 
+For a site with a login, also set `TEST_USERNAME` and `TEST_PASSWORD` (see "Sites with a login").
+
 Set `DEMO_ADMIN_TOKEN` to the demo store's admin token. Copy it from an existing setup by hand; never commit it or share it in chat. The token is used only by the runner for store resets and is removed from the agent's environment. `TARGET_URL` can point the agent at another app.
 
 **4. Git identity (only if you will commit from this machine)**
@@ -75,7 +77,31 @@ npm test                              # replay the generated suite, no AI involv
 npm run test:ui                       # same, in Playwright UI mode
 npm run report                        # open the HTML report
 npm run panel                         # open the live panel on its own (follows the newest run)
+npm run check-login                   # sites with a login: confirm the test account can sign in
 ```
+
+## Sites with a login
+
+Give the agent a dedicated test account in `.env`:
+
+```
+TARGET_URL=https://staging.example.com
+TEST_USERNAME=qa@example.com
+TEST_PASSWORD='the password'
+LOGIN_URL=https://staging.example.com/login   # optional
+```
+
+Then run `npm run check-login` (about a minute) before a full `generate`: it signs in and reports whether it worked.
+
+How the credentials are handled:
+- **The agent is not given them.** They are passed to its browser as secrets. The agent types the names `TEST_USERNAME` and `TEST_PASSWORD`, the browser fills in the real values, and the values are masked in everything the agent reads back.
+- **They stay out of the logs.** The runner replaces the values with their names in the terminal output, in `events.jsonl` and so in the live panel.
+- **They stay out of the tests.** Generated tests read `process.env`; `auth.setup.ts` signs in once and saves the session to `.auth/user.json`, which git ignores. Specs that need to be signed in reuse that session.
+- **The agent cannot open `.env` or `.auth/`.** Its file tools are denied access to both.
+
+This keeps credentials out of the agent's context, the logs and the repo. It is not a hard security boundary: the tests the agent writes do receive the password in order to sign in. Playwright traces of failed tests in `test-results/` (ignored by git) can also contain what was typed. So use a low-privilege test account on a test environment, never a real user's or an admin's.
+
+Limits: sign-in that needs a CAPTCHA, a one-time code (2FA) or an email link is not supported, and neither is sign-in through another site (Google, Microsoft), because the browser is locked to the target's address. One test account per run. In Playwright UI mode, tick the `setup` project in the filter once so the sign-in step runs.
 
 ## Live panel
 

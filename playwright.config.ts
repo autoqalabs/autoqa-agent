@@ -1,6 +1,18 @@
+import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 
+// Load .env so TARGET_URL and the test account also reach runs started without
+// the autoqa runner (npx playwright test, UI mode).
+if (existsSync('.env')) process.loadEnvFile('.env');
+delete process.env.DEMO_ADMIN_TOKEN; // operator-only: tests have no use for it
+
 const baseURL = process.env.TARGET_URL ?? 'https://autoqalabs-demo-store.vercel.app';
+
+// Sites with a login: generated-tests/auth.setup.ts signs in once with the test
+// account and saves the session to .auth/user.json. Specs that need to be signed
+// in opt in with test.use({ storageState: AUTH_FILE }) from the fixtures.
+const hasAuthSetup = existsSync('generated-tests/auth.setup.ts');
+const dependencies = hasAuthSetup ? ['setup'] : [];
 
 export default defineConfig({
   testDir: './generated-tests/specs',
@@ -20,7 +32,8 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'] }, grepInvert: /@mobile/ },
-    { name: 'mobile', use: { ...devices['Pixel 7'] }, grep: /@mobile/ },
+    ...(hasAuthSetup ? [{ name: 'setup', testDir: './generated-tests', testMatch: /auth\.setup\.ts/ }] : []),
+    { name: 'desktop', use: { ...devices['Desktop Chrome'] }, grepInvert: /@mobile/, dependencies },
+    { name: 'mobile', use: { ...devices['Pixel 7'] }, grep: /@mobile/, dependencies },
   ],
 });

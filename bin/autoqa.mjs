@@ -3,13 +3,20 @@
 //
 //   autoqa generate --url <target> [--headed] [--panel] [--model <id>] [--reset]
 //   autoqa heal     --url <target> [--headed] [--panel] [--model <id>]
+//   autoqa check-login --url <target> [--headed]
 //   autoqa test     [--url <target>]
+//
+// Sites that need a login: set TEST_USERNAME and TEST_PASSWORD in .env (and
+// LOGIN_URL or --login-url if the sign-in page is not obvious). The values go
+// to the browser as secrets and to the test process as environment variables;
+// the agent only ever sees their names.
 //
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
 // the live reasoning panel reads, plus whatever the agent writes there.
 
 import { spawn } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openInBrowser, startPanel } from './panel.mjs';
@@ -65,11 +72,67 @@ async function resetDemoStore(target) {
   console.log(`  store reset, running UI ${body.config?.version ?? '?'}`);
 }
 
+// ---------- test account (optional) ----------
+
+const SECRET_NAMES = ['TEST_USERNAME', 'TEST_PASSWORD'];
+
+// The test account from .env, or null when the target needs no login.
+function loginConfig(opts) {
+  const username = process.env.TEST_USERNAME;
+  const password = process.env.TEST_PASSWORD;
+  if (!username && !password) return null;
+  if (!username || !password) throw new Error('Set both TEST_USERNAME and TEST_PASSWORD in .env, or neither.');
+  const loginUrl = typeof opts['login-url'] === 'string' ? opts['login-url'] : process.env.LOGIN_URL;
+  return { loginUrl };
+}
+
+// Secrets file for the browser, in dotenv format. It lives outside the repo so
+// the agent's file tools cannot reach it, and is deleted when the run ends.
+function writeSecretsFile() {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'autoqa-'));
+  const file = path.join(dir, 'secrets.env');
+  // dotenv has no escapes inside quotes, so wrap the value in a quote character it does not contain.
+  const quote = (v) => {
+    const q = ["'", '`', '"'].find((c) => !v.includes(c));
+    if (!q || /[\r\n]/.test(v)) throw new Error('TEST_USERNAME / TEST_PASSWORD cannot contain line breaks or all three quote characters.');
+    return q + v + q;
+  };
+  writeFileSync(file, SECRET_NAMES.map((n) => `${n}=${quote(process.env[n])}`).join('\n') + '\n', { mode: 0o600 });
+  const remove = () => rmSync(dir, { recursive: true, force: true });
+  process.on('exit', remove);
+  return { file, remove };
+}
+
+// Replace secret values with their names in anything that is logged or shown.
+function makeRedactor() {
+  const pairs = [];
+  for (const name of SECRET_NAMES) {
+    const value = process.env[name];
+    if (!value) continue;
+    pairs.push([value, `[${name}]`]);
+    const json = JSON.stringify(value).slice(1, -1);
+    if (json !== value) pairs.push([json, `[${name}]`]);
+  }
+  pairs.sort((a, b) => b[0].length - a[0].length);
+  return (text) => pairs.reduce((t, [value, label]) => t.replaceAll(value, label), text);
+}
+
+function loginBrief(login) {
+  if (!login) return '';
+  return `
+
+Test account: this app has features behind a login, and a test account is provided.
+- Its credentials are browser secrets named TEST_USERNAME and TEST_PASSWORD. To sign in, type the secret's name as the text (for example type TEST_PASSWORD into the password field) and the browser fills in the real value. Values are masked in everything you read back.
+- ${login.loginUrl ? `Sign-in page: ${login.loginUrl}` : 'Find the sign-in page from the app navigation.'}
+- You never need the real values. Do not try to read, print, guess or write them anywhere, and do not open .env. Tests read them from process.env.TEST_USERNAME and process.env.TEST_PASSWORD; follow the Authentication section of the playwright-conventions skill.
+- If sign-in needs a CAPTCHA, a one-time code or an email link, stop trying, say so in the report and test only what is reachable.`;
+}
+
 // ---------- prompts ----------
 
-function generatePrompt({ target, id }) {
+function generatePrompt({ target, id, login }) {
   return `You are the AutoQA agent. Target app: ${target}
-Run id: ${id}. Write all run output to runs/${id}/.
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}
 
 Task: explore this app you have never seen, then write and run an automated Playwright test suite for it, and report real bugs.
 
@@ -82,9 +145,9 @@ Task: explore this app you have never seen, then write and run an automated Play
 Keep narrating in one short sentence before each meaningful step.`;
 }
 
-function healPrompt({ target, id }) {
+function healPrompt({ target, id, login }) {
   return `You are the AutoQA agent. Target app: ${target}
-Run id: ${id}. Write all run output to runs/${id}/.
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}
 
 Task: the existing Playwright suite in generated-tests/ was green on an earlier version of this app. The app has changed since. Run the suite, work out why each test fails, repair what is broken in the tests, and report what is broken in the app.
 
@@ -96,6 +159,18 @@ Task: the existing Playwright suite in generated-tests/ was green on an earlier 
 6. Write runs/${id}/heal-report.md: each failure, its classification and evidence, the exact locator changes (before and after), the bug list with severity, and the final pass/fail count.
 
 Keep narrating in one short sentence before each meaningful step.`;
+}
+
+function checkLoginPrompt({ target, login }) {
+  return `You are the AutoQA agent. Target app: ${target}${loginBrief(login)}
+
+Task: check that the test account can sign in. Do nothing else.
+
+1. Open the sign-in page and sign in with the secrets.
+2. Confirm you are signed in from what the page shows (an account page, a greeting, a sign-out control).
+3. Reply with exactly one final line: "LOGIN_OK: <what proves it>" or "LOGIN_FAILED: <what the page said or what blocked you>".
+
+Do not write any files. Keep narrating in one short sentence before each step.`;
 }
 
 // ---------- event stream ----------
@@ -126,7 +201,7 @@ function printEvent(event) {
   }
 }
 
-function runAgent({ prompt, target, id, headed, model }) {
+function runAgent({ prompt, target, id, headed, model, login, onResult }) {
   const runDir = path.join(ROOT, 'runs', id);
   mkdirSync(path.join(runDir, 'bugs'), { recursive: true });
 
@@ -139,6 +214,9 @@ function runAgent({ prompt, target, id, headed, model }) {
     '--viewport-size=1440,900',
   ];
   if (!headed) mcpArgs.push('--headless');
+  const secrets = login ? writeSecretsFile() : null;
+  if (secrets) mcpArgs.push(`--secrets=${secrets.file}`);
+  const redact = makeRedactor();
   const mcpConfig = path.join(runDir, 'mcp.json');
   writeFileSync(
     mcpConfig,
@@ -160,7 +238,12 @@ function runAgent({ prompt, target, id, headed, model }) {
             'Bash(npx playwright show-report:*)',
           ],
           // One shell only, so the agent's test commands match the rules in CLAUDE.md.
-          deny: ['WebFetch', 'WebSearch', 'PowerShell'],
+          // Credentials and saved sessions are off limits to the agent's file tools.
+          deny: [
+            'WebFetch', 'WebSearch', 'PowerShell',
+            'Read(./.env)', 'Read(./.env.*)', 'Read(./.auth/**)',
+            'Edit(./.env)', 'Edit(./.env.*)', 'Edit(./.auth/**)',
+          ],
         },
       },
       null,
@@ -195,12 +278,14 @@ function runAgent({ prompt, target, id, headed, model }) {
     buffer += chunk;
     let nl;
     while ((nl = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, nl).trim();
+      const line = redact(buffer.slice(0, nl).trim());
       buffer = buffer.slice(nl + 1);
       if (!line) continue;
       events.write(line + '\n');
       try {
-        printEvent(JSON.parse(line));
+        const event = JSON.parse(line);
+        printEvent(event);
+        if (event.type === 'result') onResult?.(event);
       } catch {
         console.log(line);
       }
@@ -209,6 +294,7 @@ function runAgent({ prompt, target, id, headed, model }) {
 
   return new Promise((resolve) => {
     child.on('close', (code) => {
+      secrets?.remove();
       events.end();
       console.log(dim(`\nRun output: runs/${id}/`));
       resolve(code ?? 1);
@@ -242,9 +328,11 @@ async function main() {
     const id = runId(command);
     console.log(`AutoQA generate → ${target}  (run ${id})`);
     if (opts.reset) await resetDemoStore(target);
+    const login = loginConfig(opts);
+    if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: generatePrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+        runAgent({ prompt: generatePrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login }),
       ),
     );
   }
@@ -252,11 +340,28 @@ async function main() {
   if (command === 'heal') {
     const id = runId(command);
     console.log(`AutoQA heal → ${target}  (run ${id})`);
+    const login = loginConfig(opts);
+    if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: healPrompt({ target, id }), target, id, headed: !!opts.headed, model: opts.model }),
+        runAgent({ prompt: healPrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login }),
       ),
     );
+  }
+
+  if (command === 'check-login') {
+    const login = loginConfig(opts);
+    if (!login) throw new Error('No test account: set TEST_USERNAME and TEST_PASSWORD in .env first.');
+    const id = runId(command);
+    console.log(`AutoQA check-login → ${target}  (run ${id})`);
+    let verdict = '';
+    await runAgent({
+      prompt: checkLoginPrompt({ target, login }), target, id, headed: !!opts.headed, model: opts.model, login,
+      onResult: (event) => (verdict = String(event.result ?? '')),
+    });
+    const ok = /LOGIN_OK/.test(verdict) && !/LOGIN_FAILED/.test(verdict);
+    console.log(ok ? green('Login works.') : '\x1b[31mLogin did not work. See the last line above.\x1b[0m');
+    process.exit(ok ? 0 : 1);
   }
 
   if (command === 'test') {
@@ -273,7 +378,10 @@ async function main() {
   console.log(`Usage:
   autoqa generate --url <target> [--headed] [--panel] [--reset] [--model <id>]
   autoqa heal --url <target> [--headed] [--panel] [--model <id>]
-  autoqa test [--url <target>]`);
+  autoqa check-login --url <target> [--headed]
+  autoqa test [--url <target>]
+
+Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).`);
 }
 
 main().catch((error) => {

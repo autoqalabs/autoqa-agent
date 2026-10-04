@@ -21,6 +21,7 @@ Goal: in as few browser actions as practical, understand what the app is for, wh
 - **Avoid loops.** Keep a visited list of routes. Do not re-open a route unless you are completing a journey.
 - **Do not log out mid-journey.** Sign in only when a journey needs it, and sign out at the end of that journey.
 - **Handle login** with credentials the app or task provides. If none exist, register a new throwaway account with an `@example.test` email.
+- **With a provided test account** (the task names the secrets `TEST_USERNAME` and `TEST_PASSWORD`): map the signed-out app first, then sign in once by typing the secret names into the sign-in form, and explore everything behind the login in that one session. Record the sign-in form's fields and the element that proves you are signed in; the tests need both. Treat the account as shared: do not change its password, email or security settings, and do not delete it. If sign-in demands a CAPTCHA, a one-time code or an email link, stop and record it as a blocker.
 - **Know when to stop.** Stop exploring when every navigation route is visited, the money path is complete, and each stated rule has been probed once. Exploration should rarely need more than about 40 browser actions.
 - **Prefer semantics.** Record elements by role and accessible name (button "Add to cart", link "Cart, 2 items", textbox "Email"), because tests will use `getByRole` and `getByLabel`.
 
@@ -41,7 +42,7 @@ Steps with the exact accessible names used.
 Observed result.
 
 ## Rules and test data
-Codes, cards, accounts, thresholds, limits the app states.
+Codes, cards, accounts, thresholds, limits the app states. Refer to a provided test account as "the test account (TEST_USERNAME)", never by its real values.
 
 ## Anomalies seen
 Anything that looked wrong while exploring, with steps. These become bug candidates.

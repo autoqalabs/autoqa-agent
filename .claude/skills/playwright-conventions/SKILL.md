@@ -32,6 +32,35 @@ Scope with `.filter({ hasText })` or a parent locator instead of `.nth()` when l
 - Each test starts from a fresh context (Playwright default) and builds its own state through the UI or a fixture. No test depends on another test's order.
 - Use unique emails for registration: `` `qa+${Date.now()}@example.test` ``.
 
+## Authentication (only when the task provides a test account)
+
+Sign in once, save the session, and reuse it. Do not sign in through the UI in every test.
+
+- `generated-tests/auth.setup.ts` signs in with the test account and saves the session. The config picks this file up automatically and runs it before the other projects.
+- Credentials come from `process.env.TEST_USERNAME` and `process.env.TEST_PASSWORD` only. Never write the values, or a fallback default, into any file.
+- Export `AUTH_FILE = '.auth/user.json'` from `fixtures.ts`. A spec that needs to be signed in opts in with `test.use({ storageState: AUTH_FILE })` at the top of its `describe`. Specs without it start signed out, which the sign-in, registration and access-control tests need.
+- Keep one test that signs in through the form itself (in the sign-in spec), so a broken login page fails a named test and not just the setup.
+- The test account is shared between tests running in parallel. Do not change its password or profile, and do not assert on data other tests may add (order counts, history length); assert on what your own test created.
+
+```ts
+// generated-tests/auth.setup.ts
+import { test as setup, expect } from '@playwright/test';
+import { LoginPage } from './pages/auth.page';
+import { AUTH_FILE } from './fixtures';
+
+setup('sign in with the test account', async ({ page }) => {
+  const username = process.env.TEST_USERNAME;
+  const password = process.env.TEST_PASSWORD;
+  if (!username || !password) throw new Error('Set TEST_USERNAME and TEST_PASSWORD in .env');
+
+  const loginPage = new LoginPage(page);
+  await loginPage.open();
+  await loginPage.signIn(username, password);
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible(); // whatever proves it in this app
+  await page.context().storageState({ path: AUTH_FILE });
+});
+```
+
 ## Template
 
 ```ts
