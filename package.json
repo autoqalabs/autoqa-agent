@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "AutoQALabs agentic testing demo: Claude Code explores a web app, writes Playwright tests and reports bugs.",
   "scripts": {
+    "setup": "node bin/setup.mjs",
     "generate": "node bin/autoqa.mjs generate",
     "generate:demo": "node bin/autoqa.mjs generate --headed --panel",
     "heal": "node bin/autoqa.mjs heal",
