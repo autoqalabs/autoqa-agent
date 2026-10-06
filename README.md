@@ -152,11 +152,30 @@ To try it on the demo store:
 
 ## Keep site work out of this repo
 
-This repo holds the agent only: the runner, the skills, the panel and the config. The tests and reports the agent produces for a site belong to that site's owner, so keep them elsewhere:
+This repo holds the agent only: the runner, the skills, the panel and the config. The tests and reports the agent produces for a site belong to that site's owner, so they live in a separate private repo, on one branch per site.
 
-- work on a `site/<name>` branch, one per tested site;
-- push that branch to a private repo of your own, never to this one;
-- never merge a site branch into `main`. Improvements to the agent go the other way: commit them on `main`, then merge `main` into the site branch.
+**One-time setup.** Create a private repo for site work and add it to this folder as a second remote:
+
+```bash
+git remote add sites git@github.com:<you>/<private-repo>.git
+```
+
+**For each site:**
+
+1. Start from the clean agent: `git checkout main`, then `git checkout -b site/<name>`.
+2. Create its settings file, `.env.<name>` (see "One settings file per site"), and run the agent.
+3. Commit, then push the branch to the private repo. The first push sets where the branch goes from then on:
+
+   ```bash
+   git push -u sites site/<name>
+   git config branch.site/<name>.pushRemote sites
+   ```
+
+**Rules:**
+
+- Never push a `site/<name>` branch to this repo, and never merge one into `main`.
+- Improvements to the agent go the other way: commit them on `main`, then merge `main` into the site branch.
+- In GitHub Desktop, do not use **Publish branch** or **Create Pull Request** on a site branch: both target this repo. Do the first push from the terminal as above; after that the push button goes to the private repo.
 
 ## Run output
 
