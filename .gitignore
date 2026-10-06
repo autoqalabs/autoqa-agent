@@ -1,5 +1,8 @@
 node_modules/
+# settings and credentials: the shared file and one per site
 .env
+.env.*
+!.env.example
 playwright-report/
 test-results/
 # saved sign-in sessions for the test account

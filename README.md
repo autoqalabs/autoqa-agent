@@ -39,7 +39,9 @@ npx playwright install chromium
 cp .env.example .env        # Windows cmd: copy .env.example .env
 ```
 
-**3. Configure `.env`**
+**3. Configure the settings**
+
+Settings live in `.env` files that git ignores: one per site, plus a shared one (see "One settings file per site"). For a first run against the demo store, a plain `.env` is enough.
 
 For a site with a login, also set `TEST_USERNAME` and `TEST_PASSWORD` (see "Sites with a login").
 
@@ -82,9 +84,29 @@ npm run panel                         # open the live panel on its own (follows 
 npm run check-login                   # sites with a login: confirm the test account can sign in
 ```
 
+## One settings file per site
+
+Each site you test gets its own settings file, `.env.<site>`, so switching sites never means editing a shared file:
+
+```
+.env              shared by every site (for example DEMO_ADMIN_TOKEN)
+.env.myshop       TARGET_URL, test account, LOGIN_URL, ALLOWED_ORIGINS for one site
+.env.otherapp     the same for another site
+```
+
+The agent picks the file in this order:
+
+1. `--site <name>` on the command line: `npm run generate:demo -- --site myshop`.
+2. The git branch: on `site/myshop` it reads `.env.myshop` with no flag needed.
+3. Neither: only the shared `.env` is read.
+
+When both files set a value, the site file wins. Each run prints the site and file it is using on its first lines. `npm test` and Playwright UI mode follow the same rules, so they always hit the same site as the agent.
+
+To add a site: copy `.env.example` to `.env.<name>`, fill it in, and create the branch `site/<name>`. Git ignores every `.env.<site>` file, and the agent's file tools cannot open them.
+
 ## Sites with a login
 
-Give the agent a dedicated test account in `.env`:
+Give the agent a dedicated test account in the site's settings file (`.env.<site>`, or `.env`):
 
 ```
 TARGET_URL=https://staging.example.com

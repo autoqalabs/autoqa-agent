@@ -6,6 +6,9 @@
 //   autoqa check-login --url <target> [--headed]
 //   autoqa test     [--url <target>]
 //
+// Settings come from `.env.<site>` plus the shared `.env`. The site is the
+// --site flag, or the branch name on a `site/<name>` branch (see site-env.mjs).
+//
 // Sites that need a login: set TEST_USERNAME and TEST_PASSWORD in .env (and
 // LOGIN_URL or --login-url if the sign-in page is not obvious). The values go
 // to the browser as secrets and to the test process as environment variables;
@@ -19,11 +22,12 @@
 // the live reasoning panel reads, plus whatever the agent writes there.
 
 import { spawn } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createWriteStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openInBrowser, startPanel } from './panel.mjs';
+import { loadSiteEnv } from './site-env.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_URL = 'https://autoqalabs-demo-store.vercel.app';
@@ -42,15 +46,6 @@ function parseArgs(argv) {
     else opts[key] = next, i++;
   }
   return { command, opts };
-}
-
-function loadDotEnv() {
-  const file = path.join(ROOT, '.env');
-  if (!existsSync(file)) return;
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-  }
 }
 
 function runId(command) {
@@ -341,8 +336,13 @@ async function withPanel(opts, run) {
 }
 
 async function main() {
-  loadDotEnv();
   const { command, opts } = parseArgs(process.argv.slice(2));
+  const settings = loadSiteEnv({ root: ROOT, flag: opts.site });
+  if (settings.site) {
+    console.log(`  site: ${settings.site} (${settings.file}, from the ${settings.source === 'flag' ? '--site flag' : settings.source})`);
+  } else if (settings.missing) {
+    console.log(`  note: on a site branch but ${settings.missing} does not exist, using .env only`);
+  }
   const target = typeof opts.url === 'string' ? opts.url : process.env.TARGET_URL ?? DEFAULT_URL;
   if (typeof opts.allow === 'string') process.env.ALLOWED_ORIGINS = opts.allow;
   if (extraOrigins().length) console.log(`  also allowed: ${extraOrigins().join(', ')}`);
@@ -404,6 +404,7 @@ async function main() {
   autoqa check-login --url <target> [--headed]
   autoqa test [--url <target>]
 
+Every command takes --site <name> to read .env.<name>; on a site/<name> branch that is the default.
 Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).
 Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.`);
 }

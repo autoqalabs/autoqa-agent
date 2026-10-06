@@ -1,9 +1,11 @@
 import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
+import { loadSiteEnv } from './bin/site-env.mjs';
 
-// Load .env so TARGET_URL and the test account also reach runs started without
-// the autoqa runner (npx playwright test, UI mode).
-if (existsSync('.env')) process.loadEnvFile('.env');
+// Load .env.<site> and .env so TARGET_URL and the test account also reach runs
+// started without the autoqa runner (npx playwright test, UI mode). The site
+// comes from AUTOQA_SITE or the site/<name> branch.
+loadSiteEnv({ root: import.meta.dirname });
 delete process.env.DEMO_ADMIN_TOKEN; // operator-only: tests have no use for it
 
 const baseURL = process.env.TARGET_URL ?? 'https://autoqalabs-demo-store.vercel.app';
