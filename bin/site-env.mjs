@@ -3,7 +3,7 @@
 //   1. the --site flag (passed in here as `flag`);
 //   2. the AUTOQA_SITE environment variable (the runner sets it for the
 //      processes it starts);
-//   3. the git branch: on `site/eventhub` the site is `eventhub`.
+//   3. the git branch: on `site/myshop` the site is `myshop`.
 // Used by both the runner and playwright.config.ts so they always agree.
 
 import { existsSync, readFileSync } from 'node:fs';
