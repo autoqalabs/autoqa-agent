@@ -59,11 +59,13 @@ Cloning and running need no GitHub login; pushing needs the company account's SS
 **5. Check it works**
 
 ```bash
-npm test            # 25 passed while the store is on v1
-npm run heal:demo   # agent run with a visible browser and the live panel
+npm run generate:demo   # the agent explores the demo store, writes a suite and runs it
+npm test                # replays that suite, no AI involved
 ```
 
-In `npm run test:ui`, open the filter under the search box and tick both the `desktop` and `mobile` projects, or UI mode shows 24 tests instead of 25.
+This repo ships with no tests: `generated-tests/` and `runs/` start empty and the agent fills them. Until a suite has been generated, `npm test` reports that it found no tests.
+
+In `npm run test:ui`, open the filter under the search box and tick both the `desktop` and `mobile` projects, or UI mode runs only the first one.
 
 ## Usage
 
@@ -114,16 +116,25 @@ Limits: sign-in that needs a CAPTCHA, a one-time code (2FA) or an email link is 
 
 The page reads `runs/<run-id>/events.jsonl`, so choosing a past run in its menu replays it. Local paths and the machine's user name are stripped before anything reaches the page.
 
-## Self-healing demo
+## Self-healing
 
-The suite on `main` targets the store's v1 UI (checkout button "Checkout"). v2 renames it to "Place order".
+When the app's UI changes, `npm run heal` re-runs the existing suite, reproduces each failure in the browser, repairs the tests that broke (a renamed button, a moved field) and re-runs to green. Failures caused by real defects are left failing, with a bug report for each.
 
-1. **v1 baseline.** `npm run test:ui`, run all: 25 passed.
-2. **Switch to v2.** Open `https://autoqalabs-demo-store.vercel.app/demo-control?token=<DEMO_ADMIN_TOKEN>` once (off camera): it stores the token in a cookie and redirects to plain `/demo-control`. Select **v2** and **Save demo settings**.
-3. **Break.** Run all again in UI mode: the checkout, account, promotions and security tests fail on the renamed button.
-4. **Heal.** `npm run heal:demo`: the agent reproduces the failures, fixes the one locator in the checkout page object and re-runs to green. The panel shows each step. With planted bugs switched on, it also files bug reports and leaves those tests failing.
-5. **Green.** Run all in UI mode again: 25 passed.
-6. **Reset.** On the control page select **v1** and save (or Reset store with "Also return to v1"), then `git checkout generated-tests` to undo the healed locator.
+To try it on the demo store:
+
+1. **Generate** a suite while the store is on v1: `npm run generate:demo`.
+2. **Switch to v2.** Open `https://autoqalabs-demo-store.vercel.app/demo-control?token=<DEMO_ADMIN_TOKEN>` once: it stores the token in a cookie and redirects to plain `/demo-control`. Select **v2** and **Save demo settings**. v2 renames the checkout button from "Checkout" to "Place order".
+3. **Break.** `npm test`: the tests that submit the checkout form fail on the renamed button.
+4. **Heal.** `npm run heal:demo`: the agent fixes the locator and re-runs to green. The panel shows each step. With planted bugs switched on, it also files bug reports and leaves those tests failing.
+5. **Reset.** On the control page select **v1** and save, or use Reset store with "Also return to v1".
+
+## Keep site work out of this repo
+
+This repo holds the agent only: the runner, the skills, the panel and the config. The tests and reports the agent produces for a site belong to that site's owner, so keep them elsewhere:
+
+- work on a `site/<name>` branch, one per tested site;
+- push that branch to a private repo of your own, never to this one;
+- never merge a site branch into `main`. Improvements to the agent go the other way: commit them on `main`, then merge `main` into the site branch.
 
 ## Run output
 
