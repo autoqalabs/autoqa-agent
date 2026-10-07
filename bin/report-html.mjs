@@ -28,6 +28,7 @@ const slug = (file) => path.basename(file, '.md').replace(/[^A-Za-z0-9_-]+/g, '-
 function renderer(bugSlugs) {
   return new Marked({
     gfm: true,
+    breaks: true, // the reports put one field per line (Severity, Area, Environment)
     renderer: {
       html(token) {
         return escapeHtml(token.raw ?? token.text ?? '');
