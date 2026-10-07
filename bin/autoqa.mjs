@@ -157,6 +157,7 @@ Task: explore this app you have never seen, then write and run an automated Play
 3. Load the playwright-conventions skill. Write page objects, fixtures, data and specs under generated-tests/. Tests use relative URLs; the base URL comes from playwright.config.ts. Tag viewport-specific tests with @mobile in the title.
 4. Run \`npx playwright test\`. For every failure, load the failure-triage skill and classify it. Fix test mistakes. Do not change tests to hide real bugs; write a bug report in runs/${id}/bugs/ instead.
 5. Write runs/${id}/report.md: suite summary (tests, passed, failed), what each failure means, the bug list with severity, and anything you chose not to test.
+6. Write runs/${id}/summary.json with the final counts from the last full run of the suite, as exact integers: {"tests": N, "passed": N, "failed": N, "flaky": N, "bugs": N}. Use null for "flaky" if you ran the suite only once.
 
 Keep narrating in one short sentence before each meaningful step.`;
 }
@@ -173,6 +174,7 @@ Task: the existing Playwright suite in generated-tests/ was green on an earlier 
 4. Real bug: do not touch the test's assertions. Write a bug report in runs/${id}/bugs/.
 5. Run the full suite again. Every remaining failure must be a real bug you reported.
 6. Write runs/${id}/heal-report.md: each failure, its classification and evidence, the exact locator changes (before and after), the bug list with severity, and the final pass/fail count.
+7. Write runs/${id}/summary.json with the final counts after your repairs, as exact integers: {"tests": N, "passed": N, "failed": N, "flaky": N, "bugs": N}. Use null for "flaky" if you ran the suite only once.
 
 Keep narrating in one short sentence before each meaningful step.`;
 }

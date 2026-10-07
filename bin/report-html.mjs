@@ -44,16 +44,45 @@ function renderer(bugSlugs) {
 
 const read = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : null);
 
-/** Passed / failed / test counts from the report's summary table, when it has one. */
-function summaryCounts(markdown) {
+/**
+ * Test counts for the header tiles. Runs from this version on have an exact
+ * `summary.json` written by the agent. Older runs do not, so the counts are
+ * read from the report's wording: a repair run's final "N passed, M failed"
+ * statement, or the rows of a summary table.
+ */
+function summaryCounts(runDir, markdown, isHeal) {
+  try {
+    const s = JSON.parse(readFileSync(path.join(runDir, 'summary.json'), 'utf8'));
+    if (Number.isInteger(s.passed) && Number.isInteger(s.failed)) {
+      return {
+        tests: Number.isInteger(s.tests) ? s.tests : s.passed + s.failed,
+        passed: s.passed,
+        failed: s.failed,
+        flaky: Number.isInteger(s.flaky) ? s.flaky : null,
+      };
+    }
+  } catch {
+    // no summary.json, or not valid JSON: fall back to the report's text
+  }
+
+  const phrases = [...markdown.matchAll(/(\d+)\s+passed\b[^.\n|]{0,24}?(\d+)\s+failed/gi)];
+  const last = phrases.at(-1);
+  const fromPhrase = last
+    ? { tests: Number(last[1]) + Number(last[2]), passed: Number(last[1]), failed: Number(last[2]), flaky: null }
+    : null;
+
   const cell = (label) => {
-    const m = markdown.match(new RegExp(`^\\|\\s*${label}[^|]*\\|\\s*(\\d+)`, 'im'));
+    const m = markdown.match(new RegExp(`^\|\s*${label}[^|]*\|\s*(\d+)`, 'im'));
     return m ? Number(m[1]) : null;
   };
-  const passed = cell('Passed');
-  const failed = cell('Failed');
-  if (passed === null || failed === null) return null;
-  return { tests: cell('Tests') ?? cell('Executed') ?? passed + failed, passed, failed, flaky: cell('Flaky') };
+  const [passed, failed] = [cell('Passed'), cell('Failed')];
+  const fromTable =
+    passed === null || failed === null
+      ? null
+      : { tests: cell('Tests') ?? cell('Executed') ?? passed + failed, passed, failed, flaky: cell('Flaky') };
+
+  // A repair report's table is often "before / after": its closing statement is the result.
+  return isHeal ? (fromPhrase ?? fromTable) : (fromTable ?? fromPhrase);
 }
 
 function bugMeta(markdown) {
@@ -134,8 +163,9 @@ export function buildHtmlReport(runDir) {
   const report = readFileSync(reportFile, 'utf8');
   const title = report.match(/^#\s+(.+)$/m)?.[1].trim() ?? `AutoQA report ${id}`;
   const body = report.replace(/^#\s+.+\r?\n/m, ''); // the title is shown in the header
-  const counts = summaryCounts(report);
-  const kind = /-heal$/.test(id) ? 'Self-healing run' : /-generate$/.test(id) ? 'Explore and generate run' : 'Run';
+  const isHeal = /-heal$/.test(id);
+  const counts = summaryCounts(runDir, report, isHeal);
+  const kind = isHeal ? 'Self-healing run' : /-generate$/.test(id) ? 'Explore and generate run' : 'Run';
   const stamp = id.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);
   const when = stamp ? `${stamp[1]}-${stamp[2]}-${stamp[3]} ${stamp[4]}:${stamp[5]} UTC` : '';
 
@@ -154,8 +184,8 @@ export function buildHtmlReport(runDir) {
   const tiles = counts
     ? `<div class="tiles">
       <div class="tile"><div class="n">${counts.tests}</div><div class="l">Tests</div></div>
-      <div class="tile"><div class="n pass">${counts.passed}</div><div class="l">Passed</div></div>
-      <div class="tile"><div class="n${counts.failed ? ' fail' : ''}">${counts.failed}</div><div class="l">Failed</div></div>
+      <div class="tile"><div class="n pass">${counts.passed}</div><div class="l">${isHeal ? 'Passed after repair' : 'Passed'}</div></div>
+      <div class="tile"><div class="n${counts.failed ? ' fail' : ''}">${counts.failed}</div><div class="l">${isHeal ? 'Still failing' : 'Failed'}</div></div>
       ${counts.flaky === null ? '' : `<div class="tile"><div class="n">${counts.flaky}</div><div class="l">Flaky</div></div>`}
       <div class="tile"><div class="n${bugs.length ? ' fail' : ''}">${bugs.length}</div><div class="l">Bug reports</div></div>
     </div>`
