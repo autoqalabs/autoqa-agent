@@ -27,6 +27,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openInBrowser, startPanel } from './panel.mjs';
+import { buildHtmlReport } from './report-html.mjs';
 import { loadSiteEnv } from './site-env.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -312,6 +313,12 @@ function runAgent({ prompt, target, id, headed, model, login, onResult }) {
     child.on('close', (code) => {
       secrets?.remove();
       events.end();
+      // The agent writes Markdown; turn it into one shareable HTML file.
+      try {
+        if (buildHtmlReport(runDir)) console.log(green(`\nHTML report: runs/${id}/report.html`));
+      } catch (error) {
+        console.log(dim(`\n(could not build report.html: ${error.message})`));
+      }
       console.log(dim(`\nRun output: runs/${id}/`));
       resolve(code ?? 1);
     });

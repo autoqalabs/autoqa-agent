@@ -48,7 +48,8 @@ A browser window opens so you can watch the agent work, next to a live panel tha
 
 **4. Read the results**
 
-- `runs/<run-id>/report.md`: what passed, what failed and why, and what it chose not to test.
+- `runs/<run-id>/report.html`: the whole run in one page you can open, print to PDF or send to someone. It has the summary, every bug report with its screenshot, the test plan and the journey map.
+- `runs/<run-id>/report.md`: the same report as Markdown, for reading in the repo or in a pull request.
 - `runs/<run-id>/bugs/`: one report per real bug, with steps to reproduce.
 - `generated-tests/`: the Playwright suite. Run it again any time with `npm test`.
 
@@ -66,7 +67,7 @@ npm run heal:demo
 | Test plan | Test cases rated by risk, including what it decided not to test and why |
 | Playwright suite | Page objects and specs: role-based locators, no hard waits, no CSS selectors |
 | Bug reports | One per real defect: severity, steps to reproduce, expected and actual result, evidence |
-| Run report | Suite summary, the meaning of every failure, the bug list |
+| Run report | Suite summary, the meaning of every failure, the bug list. Written as Markdown and as one self-contained HTML page |
 | Replayable log | Every step the agent took, viewable in the live panel afterwards |
 
 **See a real one:** [examples/demo-store-report.md](examples/demo-store-report.md) is the unedited report from the agent's first run on our demo store.
@@ -144,7 +145,8 @@ npm run heal             # the same, in the background
 npm run check-login      # confirm the test account can sign in
 npm test                 # replay the suite, no AI involved
 npm run test:ui          # replay it in Playwright's UI mode
-npm run report           # open the HTML test report
+npm run report:html      # build and open the run report as one HTML page (newest run, or name a run id)
+npm run report           # open Playwright's own HTML test report
 npm run panel            # open the live panel and replay a past run
 ```
 

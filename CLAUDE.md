@@ -21,7 +21,7 @@ This repo is an AI testing agent. It is driven by Claude Code in headless mode (
 | `generated-tests/specs/` | Test specs the agent writes |
 | `generated-tests/fixtures.ts` | Shared fixtures (page objects, test data) |
 | `generated-tests/auth.setup.ts` | Only for sites with a login: signs in once and saves the session to `.auth/user.json` |
-| `runs/<run-id>/` | Per-run output: `journeys.md`, `report.md`, `bugs/`, `events.jsonl` |
+| `runs/<run-id>/` | Per-run output: `journeys.md`, `report.md`, `bugs/`, `events.jsonl`. The runner builds `report.html` from these when you finish; do not write it yourself |
 | `playwright.config.ts` | Reads the target from `TARGET_URL` |
 
 ## Commands
