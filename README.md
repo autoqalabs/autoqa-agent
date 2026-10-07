@@ -1,4 +1,4 @@
-# AutoQA agent
+# AutoQA Agent
 
 An AI testing agent from [AutoQALabs](https://autoqalabs.com). Give it the address of your web app and it works like a QA engineer who has just joined your team:
 

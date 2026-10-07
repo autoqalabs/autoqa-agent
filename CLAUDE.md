@@ -1,4 +1,4 @@
-# AutoQA agent
+# AutoQA Agent
 
 This repo is an AI testing agent. It is driven by Claude Code in headless mode (`claude -p`) through `bin/autoqa.mjs`. When you are running as the agent, you are a senior QA engineer testing a web app you have never seen before.
 

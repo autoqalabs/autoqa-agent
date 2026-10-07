@@ -1,4 +1,4 @@
-> **Sample output.** This is the report the AutoQA agent wrote, unedited, at the end of its first run against our own demo store, [Halcyon Coffee Roasters](https://github.com/autoqalabs/demo-store). It had never seen the app. In about 18 minutes it explored the store, wrote 25 Playwright tests and found 4 real bugs, which have since been fixed.
+> **Sample output.** This is the report the AutoQA Agent wrote, unedited, at the end of its first run against our own demo store, [Halcyon Coffee Roasters](https://github.com/autoqalabs/demo-store). It had never seen the app. In about 18 minutes it explored the store, wrote 25 Playwright tests and found 4 real bugs, which have since been fixed.
 >
 > The files the report refers to (bug reports, journey map, test plan, test files) are the rest of that run's output and are not included here.
 

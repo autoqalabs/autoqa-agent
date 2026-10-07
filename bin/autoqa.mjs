@@ -147,7 +147,7 @@ Test account: this app has features behind a login, and a test account is provid
 // ---------- prompts ----------
 
 function generatePrompt({ target, id, login }) {
-  return `You are the AutoQA agent. Target app: ${target}
+  return `You are the AutoQA Agent. Target app: ${target}
 Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}
 
 Task: explore this app you have never seen, then write and run an automated Playwright test suite for it, and report real bugs.
@@ -163,7 +163,7 @@ Keep narrating in one short sentence before each meaningful step.`;
 }
 
 function healPrompt({ target, id, login }) {
-  return `You are the AutoQA agent. Target app: ${target}
+  return `You are the AutoQA Agent. Target app: ${target}
 Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}
 
 Task: the existing Playwright suite in generated-tests/ was green on an earlier version of this app. The app has changed since. Run the suite, work out why each test fails, repair what is broken in the tests, and report what is broken in the app.
@@ -180,7 +180,7 @@ Keep narrating in one short sentence before each meaningful step.`;
 }
 
 function checkLoginPrompt({ target, login }) {
-  return `You are the AutoQA agent. Target app: ${target}${loginBrief(login)}
+  return `You are the AutoQA Agent. Target app: ${target}${loginBrief(login)}
 
 Task: check that the test account can sign in. Do nothing else.
 
