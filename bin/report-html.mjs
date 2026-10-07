@@ -72,7 +72,7 @@ function summaryCounts(runDir, markdown, isHeal) {
     : null;
 
   const cell = (label) => {
-    const m = markdown.match(new RegExp(`^\|\s*${label}[^|]*\|\s*(\d+)`, 'im'));
+    const m = markdown.match(new RegExp(`^\\|\\s*${label}[^|]*\\|\\s*(\\d+)`, 'im'));
     return m ? Number(m[1]) : null;
   };
   const [passed, failed] = [cell('Passed'), cell('Failed')];
