@@ -18,6 +18,10 @@
 // loads assets from another host, list those in ALLOWED_ORIGINS in .env (or
 // --allow), separated by commas.
 //
+// Every run has a time limit and a turn limit, so one that gets stuck or loops
+// stops by itself. Raise them with MAX_MINUTES and MAX_TURNS in .env (or
+// --max-minutes and --max-turns).
+//
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
 // the live reasoning panel reads, plus whatever the agent writes there.
 
@@ -119,6 +123,42 @@ Scope: every page and feature of this app is in scope, including admin, settings
   return `
 
 Scope: do not open, call or test these routes or anything under them: ${paths.join(', ')}. The operator has ruled them out. Everything else is in scope, including admin, settings and management areas the test account can reach. List the excluded routes under what you did not test in the report.`;
+}
+
+// ---------- run limits ----------
+
+// About three times the largest normal run of each command.
+const DEFAULT_LIMITS = {
+  generate: { minutes: 60, turns: 500 },
+  heal: { minutes: 30, turns: 300 },
+  'check-login': { minutes: 5, turns: 40 },
+};
+
+// The limits for this run: the command's defaults, unless MAX_MINUTES or
+// MAX_TURNS (or their flags) say otherwise.
+function runLimits(command, opts) {
+  const pick = (flag, envName, fallback) => {
+    const raw = typeof opts[flag] === 'string' ? opts[flag] : process.env[envName];
+    if (raw === undefined) return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`${envName} must be a number above 0, got: ${raw}`);
+    return value;
+  };
+  const defaults = DEFAULT_LIMITS[command];
+  return {
+    minutes: pick('max-minutes', 'MAX_MINUTES', defaults.minutes),
+    turns: Math.floor(pick('max-turns', 'MAX_TURNS', defaults.turns)),
+  };
+}
+
+// Stop the agent and everything it started (its browser included). On Windows
+// the child is a shell, so killing it alone would leave the agent running.
+function stopProcessTree(child) {
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  } else {
+    child.kill('SIGTERM');
+  }
 }
 
 // ---------- test account (optional) ----------
@@ -229,6 +269,7 @@ Do not write any files. Keep narrating in one short sentence before each step.`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
+const red = (s) => `\x1b[31m${s}\x1b[0m`;
 
 function describeTool(name, input = {}) {
   const short = name.replace(/^mcp__playwright__browser_/, 'browser.');
@@ -252,7 +293,7 @@ function printEvent(event) {
   }
 }
 
-function runAgent({ prompt, target, id, headed, model, login, onResult }) {
+function runAgent({ prompt, target, id, headed, model, login, limits, onResult }) {
   const runDir = path.join(ROOT, 'runs', id);
   mkdirSync(path.join(runDir, 'bugs'), { recursive: true });
 
@@ -325,6 +366,17 @@ function runAgent({ prompt, target, id, headed, model, login, onResult }) {
   });
   child.stdin.end(prompt); // prompt via stdin avoids shell quoting of a multi-line string
 
+  // Limits: stop a run that is stuck (time) or looping (turns).
+  const startedAt = Date.now();
+  let turns = 1;
+  let stopped = null;
+  const stop = (reason) => {
+    if (stopped) return;
+    stopped = reason;
+    stopProcessTree(child);
+  };
+  const timer = setTimeout(() => stop(`the time limit of ${limits.minutes} minutes`), limits.minutes * 60_000);
+
   let buffer = '';
   child.stdout.on('data', (chunk) => {
     buffer += chunk;
@@ -338,6 +390,10 @@ function runAgent({ prompt, target, id, headed, model, login, onResult }) {
         const event = JSON.parse(line);
         printEvent(event);
         if (event.type === 'result') onResult?.(event);
+        // Each tool result the agent gets back starts its next turn.
+        if (event.type === 'user' && !event.parent_tool_use_id && ++turns > limits.turns) {
+          stop(`the turn limit of ${limits.turns} turns`);
+        }
       } catch {
         console.log(line);
       }
@@ -346,8 +402,18 @@ function runAgent({ prompt, target, id, headed, model, login, onResult }) {
 
   return new Promise((resolve) => {
     child.on('close', (code) => {
+      clearTimeout(timer);
       secrets?.remove();
       events.end();
+      if (stopped) {
+        const minutes = Math.round((Date.now() - startedAt) / 60_000);
+        writeFileSync(
+          path.join(runDir, 'stopped.json'),
+          JSON.stringify({ reason: stopped, turns: Math.min(turns, limits.turns), minutes, limits }, null, 2),
+        );
+        console.log(red(`\nRun stopped: it reached ${stopped}. What it wrote so far is kept.`));
+        console.log(dim('If this app needs longer, raise MAX_MINUTES or MAX_TURNS in its settings file.'));
+      }
       // The agent writes Markdown; turn it into one shareable HTML file.
       try {
         if (buildHtmlReport(runDir)) console.log(green(`\nHTML report: runs/${id}/report.html`));
@@ -355,7 +421,7 @@ function runAgent({ prompt, target, id, headed, model, login, onResult }) {
         console.log(dim(`\n(could not build report.html: ${error.message})`));
       }
       console.log(dim(`\nRun output: runs/${id}/`));
-      resolve(code ?? 1);
+      resolve(stopped ? 2 : code ?? 1);
     });
   });
 }
@@ -391,6 +457,9 @@ async function main() {
   if (typeof opts.exclude === 'string') process.env.EXCLUDED_PATHS = opts.exclude;
   if (excludedPaths(target).length) console.log(`  excluded routes: ${excludedPaths(target).join(', ')}`);
 
+  const limits = DEFAULT_LIMITS[command] ? runLimits(command, opts) : null;
+  if (limits) console.log(`  limits: ${limits.minutes} minutes, ${limits.turns} turns`);
+
   if (command === 'generate') {
     const id = runId(command);
     console.log(`AutoQA generate → ${target}  (run ${id})`);
@@ -399,7 +468,7 @@ async function main() {
     if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: generatePrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login }),
+        runAgent({ prompt: generatePrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
       ),
     );
   }
@@ -411,7 +480,7 @@ async function main() {
     if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: healPrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login }),
+        runAgent({ prompt: healPrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
       ),
     );
   }
@@ -423,11 +492,11 @@ async function main() {
     console.log(`AutoQA check-login → ${target}  (run ${id})`);
     let verdict = '';
     await runAgent({
-      prompt: checkLoginPrompt({ target, login }), target, id, headed: !!opts.headed, model: opts.model, login,
+      prompt: checkLoginPrompt({ target, login }), target, id, headed: !!opts.headed, model: opts.model, login, limits,
       onResult: (event) => (verdict = String(event.result ?? '')),
     });
     const ok = /LOGIN_OK/.test(verdict) && !/LOGIN_FAILED/.test(verdict);
-    console.log(ok ? green('Login works.') : '\x1b[31mLogin did not work. See the last line above.\x1b[0m');
+    console.log(ok ? green('Login works.') : red('Login did not work. See the last line above.'));
     process.exit(ok ? 0 : 1);
   }
 
@@ -451,7 +520,9 @@ async function main() {
 Every command takes --site <name> to read .env.<name>; on a site/<name> branch that is the default.
 Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).
 Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.
-Routes the agent must leave alone: set EXCLUDED_PATHS in .env or pass --exclude </path,/path>.`);
+Routes the agent must leave alone: set EXCLUDED_PATHS in .env or pass --exclude </path,/path>.
+Run limits: generate 60 minutes and 500 turns, heal 30 and 300, check-login 5 and 40.
+Change them with MAX_MINUTES and MAX_TURNS in .env, or --max-minutes and --max-turns.`);
 }
 
 main().catch((error) => {

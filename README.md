@@ -155,6 +155,7 @@ npm run panel            # open the live panel and replay a past run
 - `LOGIN_URL`: the sign-in page, if it is hard to find from the app's navigation.
 - `ALLOWED_ORIGINS`: other addresses your app needs, such as an API on a different host. The agent's browser blocks everything except your app's address and these.
 - `EXCLUDED_PATHS`: routes the agent must leave alone. To add them, open the app's settings file (`.env.<name>`, or `.env`) and list the paths with commas between them, for example `EXCLUDED_PATHS=/internal,/api/billing`. Each path starts with `/` and covers everything under it. For a single run, pass `--exclude /internal,/api/billing` instead. Nothing else is skipped, so an admin area you do not list gets tested, and the report names the routes that were left out.
+- `MAX_MINUTES` and `MAX_TURNS`: the run limits. Every run stops by itself when it reaches either one, so a run that gets stuck or keeps repeating a step cannot go on for hours. A turn is one step the agent takes, such as opening a page or writing a file. The defaults are 60 minutes and 500 turns for `generate`, 30 and 300 for `heal`, and 5 and 40 for `check-login`, about three times a normal run. To change them, set them in the app's settings file, for example `MAX_MINUTES=120` and `MAX_TURNS=900`, or pass `--max-minutes 120 --max-turns 900` for a single run. A stopped run keeps what it wrote and says which limit it reached.
 - **Several apps:** give each its own settings file, `.env.<name>`, and add `--site <name>` to a command.
 
 ## Licence
