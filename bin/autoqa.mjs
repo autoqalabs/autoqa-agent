@@ -88,6 +88,39 @@ function extraOrigins() {
     });
 }
 
+// ---------- excluded routes (optional) ----------
+
+// The demo store's own control surface. Only that site gets these by default.
+const DEMO_EXCLUDED_PATHS = ['/demo-control', '/api/demo'];
+
+// Routes the agent must leave alone, from EXCLUDED_PATHS in the site's settings.
+// Nothing is excluded unless it is listed: an app's own admin area is in scope.
+function excludedPaths(target) {
+  const raw = process.env.EXCLUDED_PATHS;
+  if (raw === undefined) {
+    return new URL(target).origin === new URL(DEFAULT_URL).origin ? DEMO_EXCLUDED_PATHS : [];
+  }
+  return raw
+    .split(/[,;\s]+/)
+    .filter(Boolean)
+    .map((value) => {
+      if (!value.startsWith('/')) throw new Error(`EXCLUDED_PATHS entries must start with "/": ${value}`);
+      return value;
+    });
+}
+
+function scopeBrief(target) {
+  const paths = excludedPaths(target);
+  if (!paths.length) {
+    return `
+
+Scope: every page and feature of this app is in scope, including admin, settings and management areas the test account can reach.`;
+  }
+  return `
+
+Scope: do not open, call or test these routes or anything under them: ${paths.join(', ')}. The operator has ruled them out. Everything else is in scope, including admin, settings and management areas the test account can reach. List the excluded routes under what you did not test in the report.`;
+}
+
 // ---------- test account (optional) ----------
 
 const SECRET_NAMES = ['TEST_USERNAME', 'TEST_PASSWORD'];
@@ -148,7 +181,7 @@ Test account: this app has features behind a login, and a test account is provid
 
 function generatePrompt({ target, id, login }) {
   return `You are the AutoQA Agent. Target app: ${target}
-Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${scopeBrief(target)}
 
 Task: explore this app you have never seen, then write and run an automated Playwright test suite for it, and report real bugs.
 
@@ -164,7 +197,7 @@ Keep narrating in one short sentence before each meaningful step.`;
 
 function healPrompt({ target, id, login }) {
   return `You are the AutoQA Agent. Target app: ${target}
-Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${scopeBrief(target)}
 
 Task: the existing Playwright suite in generated-tests/ was green on an earlier version of this app. The app has changed since. Run the suite, work out why each test fails, repair what is broken in the tests, and report what is broken in the app.
 
@@ -355,6 +388,8 @@ async function main() {
   const target = typeof opts.url === 'string' ? opts.url : process.env.TARGET_URL ?? DEFAULT_URL;
   if (typeof opts.allow === 'string') process.env.ALLOWED_ORIGINS = opts.allow;
   if (extraOrigins().length) console.log(`  also allowed: ${extraOrigins().join(', ')}`);
+  if (typeof opts.exclude === 'string') process.env.EXCLUDED_PATHS = opts.exclude;
+  if (excludedPaths(target).length) console.log(`  excluded routes: ${excludedPaths(target).join(', ')}`);
 
   if (command === 'generate') {
     const id = runId(command);
@@ -415,7 +450,8 @@ async function main() {
 
 Every command takes --site <name> to read .env.<name>; on a site/<name> branch that is the default.
 Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).
-Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.`);
+Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.
+Routes the agent must leave alone: set EXCLUDED_PATHS in .env or pass --exclude </path,/path>.`);
 }
 
 main().catch((error) => {
