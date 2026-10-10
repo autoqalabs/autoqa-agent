@@ -22,6 +22,10 @@
 // stops by itself. Raise them with MAX_MINUTES and MAX_TURNS in .env (or
 // --max-minutes and --max-turns).
 //
+// Every run ends with a stability check: the finished suite is run several
+// times in a row (STABILITY_RUNS in .env or --stability-runs, 3 by default) so
+// the report can state how many tests are flaky.
+//
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
 // the live reasoning panel reads, plus whatever the agent writes there.
 
@@ -161,6 +165,32 @@ function stopProcessTree(child) {
   }
 }
 
+// ---------- stability check ----------
+
+// How many times in a row the finished suite is run to find flaky tests.
+// 1 switches the check off.
+function stabilityRuns(opts) {
+  const raw = typeof opts['stability-runs'] === 'string' ? opts['stability-runs'] : process.env.STABILITY_RUNS;
+  if (raw === undefined) return 3;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) throw new Error(`STABILITY_RUNS must be a whole number, 1 or more, got: ${raw}`);
+  return value;
+}
+
+// The stability step of a task, and what the summary must say about it.
+function stabilityStep(runs) {
+  if (runs === 1) return 'Run the full suite one last time so the counts are final. The stability check is switched off for this run.';
+  return `Stability check, a fixed step: do it even when the suite already looks stable. Load the failure-triage skill and follow its "Stability check" section. Run \`npx playwright test\` ${runs} times in a row, changing no file in between, and compare each test's result across the ${runs} runs. A test with mixed results is flaky: find the cause, fix the test, then start the ${runs} runs again.`;
+}
+
+function summaryStep(id, runs, when) {
+  const flaky =
+    runs === 1
+      ? 'Use null for "flaky": the stability check was off.'
+      : `"flaky" is how many tests still gave mixed results in the last ${runs} stability runs. It is always a number: 0 when every test behaved the same in all of them.`;
+  return `Write runs/${id}/summary.json with the final counts ${when}, as exact integers: {"tests": N, "passed": N, "failed": N, "flaky": N, "bugs": N, "stability_runs": ${runs}}. ${flaky}`;
+}
+
 // ---------- test account (optional) ----------
 
 const SECRET_NAMES = ['TEST_USERNAME', 'TEST_PASSWORD'];
@@ -219,7 +249,7 @@ Test account: this app has features behind a login, and a test account is provid
 
 // ---------- prompts ----------
 
-function generatePrompt({ target, id, login }) {
+function generatePrompt({ target, id, login, stability }) {
   return `You are the AutoQA Agent. Target app: ${target}
 Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${scopeBrief(target)}
 
@@ -229,13 +259,14 @@ Task: explore this app you have never seen, then write and run an automated Play
 2. Load the test-design skill. Write runs/${id}/test-plan.md.
 3. Load the playwright-conventions skill. Write page objects, fixtures, data and specs under generated-tests/. Tests use relative URLs; the base URL comes from playwright.config.ts. Tag viewport-specific tests with @mobile in the title.
 4. Run \`npx playwright test\`. For every failure, load the failure-triage skill and classify it. Fix test mistakes. Do not change tests to hide real bugs; write a bug report in runs/${id}/bugs/ instead.
-5. Write runs/${id}/report.md: suite summary (tests, passed, failed), what each failure means, the bug list with severity, and anything you chose not to test.
-6. Write runs/${id}/summary.json with the final counts from the last full run of the suite, as exact integers: {"tests": N, "passed": N, "failed": N, "flaky": N, "bugs": N}. Use null for "flaky" if you ran the suite only once.
+5. ${stabilityStep(stability)}
+6. Write runs/${id}/report.md: suite summary (tests, passed, failed, flaky), a Stability section, what each failure means, the bug list with severity, and anything you chose not to test.
+7. ${summaryStep(id, stability, 'from the last full run of the suite')}
 
 Keep narrating in one short sentence before each meaningful step.`;
 }
 
-function healPrompt({ target, id, login }) {
+function healPrompt({ target, id, login, stability }) {
   return `You are the AutoQA Agent. Target app: ${target}
 Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${scopeBrief(target)}
 
@@ -246,8 +277,9 @@ Task: the existing Playwright suite in generated-tests/ was green on an earlier 
 3. Broken locator, timing or test data: repair it. Fix the page object, not the spec, when the locator lives there. Load the playwright-conventions skill first and keep its house style. Change only what the evidence shows has changed.
 4. Real bug: do not touch the test's assertions. Write a bug report in runs/${id}/bugs/.
 5. Run the full suite again. Every remaining failure must be a real bug you reported.
-6. Write runs/${id}/heal-report.md: each failure, its classification and evidence, the exact locator changes (before and after), the bug list with severity, and the final pass/fail count.
-7. Write runs/${id}/summary.json with the final counts after your repairs, as exact integers: {"tests": N, "passed": N, "failed": N, "flaky": N, "bugs": N}. Use null for "flaky" if you ran the suite only once.
+6. ${stabilityStep(stability)}
+7. Write runs/${id}/heal-report.md: each failure, its classification and evidence, the exact locator changes (before and after), the bug list with severity, a Stability section, and the final pass/fail count.
+8. ${summaryStep(id, stability, 'after your repairs')}
 
 Keep narrating in one short sentence before each meaningful step.`;
 }
@@ -459,6 +491,8 @@ async function main() {
 
   const limits = DEFAULT_LIMITS[command] ? runLimits(command, opts) : null;
   if (limits) console.log(`  limits: ${limits.minutes} minutes, ${limits.turns} turns`);
+  const stability = command === 'generate' || command === 'heal' ? stabilityRuns(opts) : null;
+  if (stability) console.log(`  stability check: ${stability === 1 ? 'off' : `${stability} runs of the finished suite`}`);
 
   if (command === 'generate') {
     const id = runId(command);
@@ -468,7 +502,7 @@ async function main() {
     if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: generatePrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
+        runAgent({ prompt: generatePrompt({ target, id, login, stability }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
       ),
     );
   }
@@ -480,7 +514,7 @@ async function main() {
     if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: healPrompt({ target, id, login }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
+        runAgent({ prompt: healPrompt({ target, id, login, stability }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
       ),
     );
   }
@@ -522,7 +556,8 @@ Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_
 Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.
 Routes the agent must leave alone: set EXCLUDED_PATHS in .env or pass --exclude </path,/path>.
 Run limits: generate 60 minutes and 500 turns, heal 30 and 300, check-login 5 and 40.
-Change them with MAX_MINUTES and MAX_TURNS in .env, or --max-minutes and --max-turns.`);
+Change them with MAX_MINUTES and MAX_TURNS in .env, or --max-minutes and --max-turns.
+Stability check: the finished suite is run 3 times to find flaky tests. Change it with STABILITY_RUNS in .env or --stability-runs.`);
 }
 
 main().catch((error) => {

@@ -28,6 +28,27 @@ Treat it as a real bug when any of these hold, even if a locator also changed:
 
 If confidence is below 80 percent for anything other than a real bug, report it as needs review instead of changing the test.
 
+## Stability check
+
+One green run proves little: a test that passes by luck will fail next week. When the task asks for a stability check, do it after the suite is written and every failure is triaged.
+
+1. Run the full suite the number of times the task gives, one after another. Change no file between runs.
+2. After each run, read `playwright-report/results.json` and note every test's result. The file is overwritten by the next run.
+3. Compare the runs and put each test in one group:
+
+| Group | Result across the runs | Action |
+| --- | --- | --- |
+| Stable pass | Passed every time | None. |
+| Consistent failure | Failed every time, the same way | It must already be a reported bug. If it is not, triage it now. |
+| Flaky | Passed in some runs, failed in others | Triage it. The cause is almost always timing or test data shared between tests. Fix the test, never with a sleep or a retry. |
+
+4. If you changed any file, the earlier runs no longer count: start the runs again from the first.
+5. Stop when a full set of runs needs no change. If a test is still flaky after two attempts to fix it, leave it, count it as flaky and say why in the report.
+
+A test that fails differently from run to run because the app itself misbehaves at random is a real bug, not a flaky test: report it and say how often it happened.
+
+In the report, write a Stability section: how many runs, and how many tests were stable passes, consistent failures and flaky, plus what you fixed along the way.
+
 ## Bug report: `runs/<run-id>/bugs/BUG-<nn>-<slug>.md`
 
 ```markdown

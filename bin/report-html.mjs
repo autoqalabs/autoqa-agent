@@ -60,6 +60,7 @@ function summaryCounts(runDir, markdown, isHeal) {
         passed: s.passed,
         failed: s.failed,
         flaky: Number.isInteger(s.flaky) ? s.flaky : null,
+        stabilityRuns: Number.isInteger(s.stability_runs) && s.stability_runs > 1 ? s.stability_runs : null,
       };
     }
   } catch {
@@ -188,7 +189,7 @@ export function buildHtmlReport(runDir) {
       <div class="tile"><div class="n">${counts.tests}</div><div class="l">Tests</div></div>
       <div class="tile"><div class="n pass">${counts.passed}</div><div class="l">${isHeal ? 'Passed after repair' : 'Passed'}</div></div>
       <div class="tile"><div class="n${counts.failed ? ' fail' : ''}">${counts.failed}</div><div class="l">${isHeal ? 'Still failing' : 'Failed'}</div></div>
-      ${counts.flaky === null ? '' : `<div class="tile"><div class="n">${counts.flaky}</div><div class="l">Flaky</div></div>`}
+      ${counts.flaky === null ? '' : `<div class="tile"><div class="n">${counts.flaky}</div><div class="l">${counts.stabilityRuns ? `Flaky in ${counts.stabilityRuns} runs` : 'Flaky'}</div></div>`}
       <div class="tile"><div class="n${bugs.length ? ' fail' : ''}">${bugs.length}</div><div class="l">Bug reports</div></div>
     </div>`
     : '';

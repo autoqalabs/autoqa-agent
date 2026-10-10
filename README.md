@@ -67,7 +67,7 @@ npm run heal:demo
 | Test plan | Test cases rated by risk, including what it decided not to test and why |
 | Playwright suite | Page objects and specs: role-based locators, no hard waits, no CSS selectors |
 | Bug reports | One per real defect: severity, steps to reproduce, expected and actual result, evidence |
-| Run report | Suite summary, the meaning of every failure, the bug list. Written as Markdown and as one self-contained HTML page |
+| Run report | Suite summary with a flaky count from repeated runs, the meaning of every failure, the bug list. Written as Markdown and as one self-contained HTML page |
 | Replayable log | Every step the agent took, viewable in the live panel afterwards |
 
 **See a real one:** [examples/demo-store-report.md](examples/demo-store-report.md) is the unedited report from the agent's first run on our demo store.
@@ -156,6 +156,7 @@ npm run panel            # open the live panel and replay a past run
 - `ALLOWED_ORIGINS`: other addresses your app needs, such as an API on a different host. The agent's browser blocks everything except your app's address and these.
 - `EXCLUDED_PATHS`: routes the agent must leave alone. To add them, open the app's settings file (`.env.<name>`, or `.env`) and list the paths with commas between them, for example `EXCLUDED_PATHS=/internal,/api/billing`. Each path starts with `/` and covers everything under it. For a single run, pass `--exclude /internal,/api/billing` instead. Nothing else is skipped, so an admin area you do not list gets tested, and the report names the routes that were left out.
 - `MAX_MINUTES` and `MAX_TURNS`: the run limits. Every run stops by itself when it reaches either one, so a run that gets stuck or keeps repeating a step cannot go on for hours. A turn is one step the agent takes, such as opening a page or writing a file. The defaults are 60 minutes and 500 turns for `generate`, 30 and 300 for `heal`, and 5 and 40 for `check-login`, about three times a normal run. To change them, set them in the app's settings file, for example `MAX_MINUTES=120` and `MAX_TURNS=900`, or pass `--max-minutes 120 --max-turns 900` for a single run. A stopped run keeps what it wrote and says which limit it reached.
+- `STABILITY_RUNS`: the stability check. Once the suite is written and every failure is explained, the agent runs it three times in a row and compares the results. A test that passes on one run and fails on another is flaky: the agent fixes it and repeats the runs, so every report states how many tests are flaky and how many runs that rests on. To change the number, set for example `STABILITY_RUNS=5` in the app's settings file, or pass `--stability-runs 5` for a single run. `1` switches the check off.
 - **Several apps:** give each its own settings file, `.env.<name>`, and add `--site <name>` to a command.
 
 ## Licence
