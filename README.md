@@ -156,6 +156,10 @@ npm run panel            # open the live panel and replay a past run
 - `ALLOWED_ORIGINS`: other addresses your app needs, such as an API on a different host. The agent's browser blocks everything except your app's address and these.
 - **Several apps:** give each its own settings file, `.env.<name>`, and add `--site <name>` to a command.
 
+## Licence
+
+The agent is free to install and run for evaluation. Production use, redistribution and building products or services on it need an agreement with AutoQALabs. The full terms are in [LICENSE](LICENSE). The tests and reports it writes for your app are yours.
+
 ## Work with us
 
 AutoQALabs sets this up on your application, tailors the skills to your team's standards and maintains the suite as your product changes.

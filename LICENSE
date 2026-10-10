@@ -1,0 +1,75 @@
+AutoQA Agent Evaluation License
+
+Copyright (c) 2026 AutoQALabs. All rights reserved.
+
+1. Definitions
+
+"Software" means the AutoQA Agent source code, skills, scripts, documentation
+and other files in this repository.
+
+"Evaluation" means installing and running the Software to assess whether it
+suits your needs, on applications you own or are authorised to test.
+
+"You" means the person or organisation using the Software.
+
+2. Permission
+
+AutoQALabs grants You a free, non-exclusive, non-transferable, revocable
+licence to download, install and run the Software, and to make the copies
+needed to do so, for Evaluation only.
+
+3. Restrictions
+
+Without a separate written agreement with AutoQALabs, You may not:
+
+a. use the Software in production, or as part of a regular development,
+   testing or release process, beyond Evaluation;
+b. use the Software to provide a product or service to anyone else, whether
+   paid or free;
+c. distribute, publish, sublicense, sell, rent or otherwise make the Software,
+   or any modified version of it, available to anyone else;
+d. create or distribute works based on the Software, other than changes You
+   make privately for Evaluation;
+e. remove or change any copyright, licence or attribution notice in the
+   Software.
+
+4. Your output
+
+Tests, reports and other files the Software produces when You run it on your
+own applications belong to You. This licence places no restriction on them.
+
+5. Ownership
+
+The Software is licensed, not sold. AutoQALabs keeps all rights, title and
+interest in the Software. No rights are granted except those stated in
+section 2. This licence grants no right to use the AutoQALabs name or marks.
+
+6. Third-party software
+
+The Software depends on third-party packages that are provided under their own
+licences. Those licences, not this one, govern those packages.
+
+7. Termination
+
+This licence ends automatically if You break any of its terms. AutoQALabs may
+also end it at any time by giving notice. When it ends, You must stop using
+the Software and delete every copy You hold. Sections 3 to 9 continue to apply
+after it ends.
+
+8. No warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+9. Limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL AUTOQALABS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+THE USE OF OR OTHER DEALINGS IN THE SOFTWARE.
+
+10. Commercial use
+
+For production use, or any use beyond Evaluation, contact AutoQALabs at
+https://autoqalabs.com/contact.
