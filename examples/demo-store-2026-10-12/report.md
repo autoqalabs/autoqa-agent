@@ -1,4 +1,4 @@
-> **Sample output.** This is the report the AutoQA Agent wrote, unedited, at the end of a run against our own demo store, [Halcyon Coffee Roasters](https://github.com/autoqalabs/demo-store), on 12 October 2026. In 17 minutes it explored the store, wrote 34 Playwright tests, ran the suite four times and found 2 minor bugs. The [video in the README](../../README.md#watch-a-real-run) is a recording of this same run.
+> **Sample output.** This is the report the AutoQA Agent wrote, unedited, at the end of a run against our own demo store, [Halcyon Coffee Roasters](https://github.com/autoqalabs/demo-store), on 12 October 2026. In 17 minutes it explored the store, wrote 34 Playwright tests, ran the suite four times and found 2 minor bugs. The [recording in the README](../../README.md#watch-a-real-run) is a recording of this same run.
 >
 > The two bug reports are in [bugs/](bugs/). The other files the report refers to (journey map, test plan, test files) are the rest of that run's output and are not included here.
 
