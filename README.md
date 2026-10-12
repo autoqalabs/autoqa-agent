@@ -10,6 +10,12 @@ An AI testing agent from [AutoQALabs](https://autoqalabs.com). Give it the addre
 
 What you keep at the end is an ordinary Playwright suite that you own. Re-running it needs no AI and takes seconds.
 
+## Watch a real run
+
+[![The AutoQA Agent testing our demo coffee shop: the shop's browser window on the left, the agent's live panel on the right. Click to play the video.](docs/media/run-video-cover.jpg)](https://autoqalabs.com/videos/agent-run.mp4)
+
+A real run on our demo coffee shop, sped up from 16 minutes to 80 seconds. The agent explores the shop on desktop and mobile screens, writes 34 tests, runs the suite four times and reports 2 bugs. Click the picture to play it.
+
 ## Use it in four steps
 
 You need [Node.js 22](https://nodejs.org), [Git](https://git-scm.com) and [Claude Code](https://code.claude.com) (`npm install -g @anthropic-ai/claude-code`, then run `claude` once to log in). The agent runs on a Claude subscription, so there is no API key to buy.
@@ -70,7 +76,26 @@ npm run heal:demo
 | Run report | Suite summary with a flaky count from repeated runs, the meaning of every failure, the bug list. Written as Markdown and as one self-contained HTML page |
 | Replayable log | Every step the agent took, viewable in the live panel afterwards |
 
-**See a real one:** [examples/demo-store-report.md](examples/demo-store-report.md) is the unedited report from the agent's first run on our demo store.
+## A real report
+
+This is the report from the run in the video above, on our demo store.
+
+| Tests | Passed | Failed | Flaky | Bugs |
+| --- | --- | --- | --- | --- |
+| 34 | 34 | 0 | 0 | 2 |
+
+No test failed in any of the 4 runs of the suite. Both bugs were found during exploration:
+
+| ID | Severity | Bug |
+| --- | --- | --- |
+| [BUG-01](examples/demo-store-2026-10-12/bugs/BUG-01-added-message-at-quantity-cap.md) | minor | The product page says "Added 1 × House Espresso" when nothing was added, because the cart line was already at its limit of 10 |
+| [BUG-02](examples/demo-store-2026-10-12/bugs/BUG-02-duplicate-cart-button-names.md) | minor | Cart buttons for the same coffee in two grinds have identical accessible names, so a screen-reader user cannot tell them apart |
+
+Every run writes the report twice. The Markdown one is here in full and unedited: [examples/demo-store-2026-10-12/report.md](examples/demo-store-2026-10-12/report.md). The HTML one is a single page you can open, print to PDF or send to someone:
+
+![The HTML report from the same run: 34 tests, 34 passed, 0 failed, 0 flaky and 2 bugs, followed by the stability check and the bug list.](docs/media/run-report.png)
+
+**An earlier one, with failing tests:** [examples/demo-store-report.md](examples/demo-store-report.md) is the unedited report from the agent's first run on the same store, when 4 of its 25 tests failed on real bugs.
 
 ## Results so far
 
@@ -79,6 +104,7 @@ npm run heal:demo
 | Our demo store, never seen before | Explore and write, about 18 minutes | 25 tests written. 21 passed, 4 failed. All 4 failures were real bugs, including a critical one: guest order pages were visible to anyone with the link. |
 | The same store after a button was renamed | Repair, about 3 minutes | 9 tests broke on the renamed button. The agent traced them to one locator, changed that one line and the suite passed 25 of 25. |
 | The same store, renamed button plus 4 planted bugs | Repair, about 7 minutes | It repaired the locator and refused to "fix" the 6 tests failing on the planted bugs. It left them failing and wrote a bug report for each. |
+| The same store after those bugs were fixed | Explore and write, about 17 minutes | 34 tests written. All 34 passed on the first run and in 3 further stability runs, with 0 flaky. 2 minor bugs found during exploration. |
 | A third-party practice app behind a login | Explore and write, about 13 minutes | 21 tests written, signed in with a test account. 20 passed, 1 failed on a real bug. |
 
 Each suite was run on one machine against one environment; these are results from our own runs, not a benchmark.
@@ -133,7 +159,7 @@ Before a full run, `npm run check-login` confirms in about a minute that the tes
 
 ## Your tests stay yours
 
-This repo contains the agent and nothing else. The tests and reports it writes for an app are never added here: they belong to that app's owner and are kept separately and privately.
+This repo contains the agent and nothing else. The tests and reports it writes for an app are never added here: they belong to that app's owner and are kept separately and privately. The only exceptions are the sample reports in `examples/`, which come from our own demo store.
 
 ## Commands
 
