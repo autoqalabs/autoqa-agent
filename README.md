@@ -12,9 +12,9 @@ What you keep at the end is an ordinary Playwright suite that you own. Re-runnin
 
 ## Watch a real run
 
-![The AutoQA Agent testing our demo coffee shop: the shop's browser window on the left, the agent's live panel on the right.](docs/media/run-video.gif)
+https://github.com/user-attachments/assets/73ecacc2-7b85-4e13-beee-1bd88678e7bf
 
-A real run on our demo coffee shop, sped up from 16 minutes to 40 seconds. The agent explores the shop on desktop and mobile screens, writes 34 tests, runs the suite four times and reports 2 bugs. A sharper version with playback controls is on [our site](https://autoqalabs.com/our-app#run).
+A real run on our demo coffee shop, sped up from 16 minutes to 80 seconds. The agent explores the shop on desktop and mobile screens, writes 34 tests, runs the suite four times and reports 2 bugs.
 
 ## Use it in four steps
 
