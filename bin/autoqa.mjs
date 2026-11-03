@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // autoqa: runs Claude Code headless as a QA agent against a target web app.
 //
-//   autoqa generate --url <target> [--headed] [--panel] [--model <id>] [--reset]
+//   autoqa generate --url <target> [--headed] [--panel] [--model <id>] [--reset] [--prd <file>]
 //   autoqa heal     --url <target> [--headed] [--panel] [--model <id>]
 //   autoqa check-login --url <target> [--headed]
 //   autoqa test     [--url <target>]
+//   autoqa review   [<run-id>] [--parent <task id or URL>]
+//   autoqa login    [--url <target>]
+//   autoqa hosts    [--url <target>] [--also <url,url>] [--write]
 //
 // Settings come from `.env.<site>` plus the shared `.env`. The site is the
 // --site flag, or the branch name on a `site/<name>` branch (see site-env.mjs).
@@ -12,7 +15,12 @@
 // Sites that need a login: set TEST_USERNAME and TEST_PASSWORD in .env (and
 // LOGIN_URL or --login-url if the sign-in page is not obvious). The values go
 // to the browser as secrets and to the test process as environment variables;
-// the agent only ever sees their names.
+// the agent only ever sees their names. Or sign in by hand once with
+// `autoqa login`: runs then start from that saved session (see session.mjs).
+//
+// --prd <file> tests a feature against its PRD (.docx, .pdf, .md or .txt): the
+// runner saves it as runs/<run-id>/prd.md and the agent reports a result for
+// every requirement (see the prd-testing skill).
 //
 // The browser is locked to the target's origin. If the app calls an API or
 // loads assets from another host, list those in ALLOWED_ORIGINS in .env (or
@@ -28,6 +36,11 @@
 //
 // Each run gets runs/<run-id>/ with the raw event stream (events.jsonl) that
 // the live reasoning panel reads, plus whatever the agent writes there.
+//
+// Bug reports can go to ClickUp: `autoqa review` (or --clickup on generate and
+// heal) serves the run's report with a picker that creates the bugs you tick
+// as subtasks of a parent task. Needs CLICKUP_API_TOKEN in .env; the token is
+// never passed to the agent.
 
 import { spawn } from 'node:child_process';
 import { createWriteStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -35,7 +48,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openInBrowser, startPanel } from './panel.mjs';
+import { readBugs } from './clickup.mjs';
+import { classifyHosts, discoverHosts, writeAllowedOrigins } from './hosts.mjs';
+import { prdToMarkdown } from './prd.mjs';
+import { savedSession, saveSessionByHand } from './session.mjs';
 import { buildHtmlReport } from './report-html.mjs';
+import { runReview } from './review.mjs';
 import { loadSiteEnv } from './site-env.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -247,11 +265,23 @@ Test account: this app has features behind a login, and a test account is provid
 - If sign-in needs a CAPTCHA, a one-time code or an email link, stop trying, say so in the report and test only what is reachable.`;
 }
 
+// A session the operator saved with `autoqa login`. Used instead of the test account.
+function sessionBrief(session) {
+  if (!session) return '';
+  return `
+
+Signed-in session: the operator signed in by hand and saved the session. Your browser starts signed in.
+- Do not sign out, and do not change the account's password, email or security settings: that would end the session for the rest of the run.
+- If a page sends you to the sign-in screen, the session has expired. Stop testing signed-in features, say so in the report (the operator runs \`npm run login\` again) and test only what is still reachable.
+- Signed-in specs use \`test.use({ storageState: AUTH_FILE })\` with \`AUTH_FILE = '.auth/user.json'\` exported from fixtures.ts. That file already holds the session: do not write generated-tests/auth.setup.ts and do not sign in through the form in tests. You cannot read .auth/ and do not need to.`;
+}
+
 // ---------- prompts ----------
 
-function generatePrompt({ target, id, login, stability }) {
+function generatePrompt({ target, id, login, session, stability, prd }) {
+  if (prd) return prdPrompt({ target, id, login, session, stability });
   return `You are the AutoQA Agent. Target app: ${target}
-Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${scopeBrief(target)}
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${sessionBrief(session)}${scopeBrief(target)}
 
 Task: explore this app you have never seen, then write and run an automated Playwright test suite for it, and report real bugs.
 
@@ -266,9 +296,29 @@ Task: explore this app you have never seen, then write and run an automated Play
 Keep narrating in one short sentence before each meaningful step.`;
 }
 
-function healPrompt({ target, id, login, stability }) {
+// generate with --prd: test one feature against its requirements.
+function prdPrompt({ target, id, login, session, stability }) {
   return `You are the AutoQA Agent. Target app: ${target}
-Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${scopeBrief(target)}
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${sessionBrief(session)}${scopeBrief(target)}
+
+Task: the operator gave you the PRD of one feature, saved at runs/${id}/prd.md. Test that feature in this app against the PRD and report a result for every requirement. Automate what can be automated, check the rest by hand in the browser, and report real bugs.
+
+1. Load the prd-testing skill and follow it for the whole run. Read runs/${id}/prd.md in full.
+2. Load the app-exploration skill. Explore the parts of ${target} the PRD covers, and what they depend on, and write runs/${id}/journeys.md.
+3. Write runs/${id}/test-plan.md as the prd-testing skill describes: every testable requirement as a numbered case traced to its PRD section, and how each will be checked.
+4. Load the playwright-conventions skill. Write page objects, fixtures, data and specs under generated-tests/ for the cases marked automated. Tests use relative URLs; the base URL comes from playwright.config.ts. Put the case ID in each test title.
+5. Run \`npx playwright test\`. For every failure, load the failure-triage skill and classify it. Fix test mistakes. Do not change tests to hide real bugs; write a bug report in runs/${id}/bugs/ instead.
+6. Check every case marked manual in the browser, as the prd-testing skill describes, and record what you saw.
+7. ${stabilityStep(stability)}
+8. Write runs/${id}/report.md in the prd-testing report format.
+9. Write runs/${id}/summary.json as the prd-testing skill describes, with "stability_runs": ${stability}.
+
+Keep narrating in one short sentence before each meaningful step.`;
+}
+
+function healPrompt({ target, id, login, session, stability }) {
+  return `You are the AutoQA Agent. Target app: ${target}
+Run id: ${id}. Write all run output to runs/${id}/.${loginBrief(login)}${sessionBrief(session)}${scopeBrief(target)}
 
 Task: the existing Playwright suite in generated-tests/ was green on an earlier version of this app. The app has changed since. Run the suite, work out why each test fails, repair what is broken in the tests, and report what is broken in the app.
 
@@ -301,6 +351,7 @@ Do not write any files. Keep narrating in one short sentence before each step.`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
+const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 
 function describeTool(name, input = {}) {
@@ -325,7 +376,7 @@ function printEvent(event) {
   }
 }
 
-function runAgent({ prompt, target, id, headed, model, login, limits, onResult }) {
+function runAgent({ prompt, target, id, headed, model, login, session, limits, onResult }) {
   const runDir = path.join(ROOT, 'runs', id);
   mkdirSync(path.join(runDir, 'bugs'), { recursive: true });
 
@@ -341,6 +392,7 @@ function runAgent({ prompt, target, id, headed, model, login, limits, onResult }
   if (!headed) mcpArgs.push('--headless');
   const secrets = login ? writeSecretsFile() : null;
   if (secrets) mcpArgs.push(`--secrets=${secrets.file}`);
+  if (session) mcpArgs.push(`--storage-state=${session.file}`);
   const redact = makeRedactor();
   const mcpConfig = path.join(runDir, 'mcp.json');
   writeFileSync(
@@ -392,7 +444,7 @@ function runAgent({ prompt, target, id, headed, model, login, limits, onResult }
   const events = createWriteStream(path.join(runDir, 'events.jsonl'));
   const child = spawn('claude', args, {
     cwd: ROOT,
-    env: { ...process.env, TARGET_URL: target, DEMO_ADMIN_TOKEN: '' },
+    env: { ...process.env, TARGET_URL: target, DEMO_ADMIN_TOKEN: '', CLICKUP_API_TOKEN: '' },
     shell: process.platform === 'win32',
     stdio: ['pipe', 'pipe', 'inherit'],
   });
@@ -475,6 +527,50 @@ async function withPanel(opts, run) {
   return new Promise(() => {});
 }
 
+// With --clickup, open the ClickUp review for the run's bug reports once it ends.
+async function reviewAfterRun(opts, id, target) {
+  if (!opts.clickup) return;
+  if (!readBugs(path.join(ROOT, 'runs', id)).length) {
+    console.log(dim('\nNo bug reports to send to ClickUp.'));
+    return;
+  }
+  try {
+    await runReview({ runId: id, parent: clickupParent(opts), target });
+  } catch (error) {
+    console.log(red(`\nClickUp review: ${error.message}`));
+  }
+}
+
+// The session saved with `autoqa login`, unless --no-session. It replaces the test account.
+function sessionConfig(opts) {
+  if (opts['no-session']) return null;
+  const session = savedSession(ROOT);
+  if (!session) return null;
+  const hours = Math.round(session.ageHours);
+  console.log(`  signed-in session: saved by npm run login ${hours < 1 ? 'less than an hour' : `${hours} hour(s)`} ago`);
+  if (session.ageHours > 12) console.log(yellow('  the session may have expired: run npm run login again if the agent lands on the sign-in page'));
+  return session;
+}
+
+// The PRD for --prd, converted and saved into the run folder before the agent starts.
+function preparePrd(opts, id) {
+  if (typeof opts.prd !== 'string') {
+    if (opts.prd) throw new Error('--prd needs a file: --prd <path to .docx, .pdf, .md or .txt>');
+    return false;
+  }
+  // npm run changes the working directory; resolve against where the command was typed.
+  const file = path.resolve(process.env.INIT_CWD ?? process.cwd(), opts.prd.replace(/^~(?=\/)/, os.homedir()));
+  const markdown = prdToMarkdown(file);
+  const runDir = path.join(ROOT, 'runs', id);
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(path.join(runDir, 'prd.md'), markdown);
+  console.log(`  PRD: ${path.basename(file)} → runs/${id}/prd.md (${markdown.length.toLocaleString()} characters)`);
+  return true;
+}
+
+const clickupParent = (opts) =>
+  typeof opts.parent === 'string' ? opts.parent : process.env.CLICKUP_PARENT_TASK ?? '';
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2));
   const settings = loadSiteEnv({ root: ROOT, flag: opts.site });
@@ -498,11 +594,14 @@ async function main() {
     const id = runId(command);
     console.log(`AutoQA generate → ${target}  (run ${id})`);
     if (opts.reset) await resetDemoStore(target);
-    const login = loginConfig(opts);
+    const prd = preparePrd(opts, id);
+    const session = sessionConfig(opts);
+    const login = session ? null : loginConfig(opts);
     if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: generatePrompt({ target, id, login, stability }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
+        runAgent({ prompt: generatePrompt({ target, id, login, session, stability, prd }), target, id, headed: !!opts.headed, model: opts.model, login, session, limits })
+          .then(async (code) => { await reviewAfterRun(opts, id, target); return code; }),
       ),
     );
   }
@@ -510,11 +609,13 @@ async function main() {
   if (command === 'heal') {
     const id = runId(command);
     console.log(`AutoQA heal → ${target}  (run ${id})`);
-    const login = loginConfig(opts);
+    const session = sessionConfig(opts);
+    const login = session ? null : loginConfig(opts);
     if (login) console.log('  test account: TEST_USERNAME / TEST_PASSWORD from .env');
     process.exit(
       await withPanel(opts, () =>
-        runAgent({ prompt: healPrompt({ target, id, login, stability }), target, id, headed: !!opts.headed, model: opts.model, login, limits }),
+        runAgent({ prompt: healPrompt({ target, id, login, session, stability }), target, id, headed: !!opts.headed, model: opts.model, login, session, limits })
+          .then(async (code) => { await reviewAfterRun(opts, id, target); return code; }),
       ),
     );
   }
@@ -534,6 +635,57 @@ async function main() {
     process.exit(ok ? 0 : 1);
   }
 
+  if (command === 'login') {
+    console.log(`AutoQA login → ${target}`);
+    const loginUrl = typeof opts['login-url'] === 'string' ? opts['login-url'] : process.env.LOGIN_URL;
+    const saved = await saveSessionByHand({ root: ROOT, target, loginUrl });
+    console.log(green(`\nSession saved to .auth/user.json (${saved.cookies} cookies, ${saved.origins} site storage entries).`));
+    console.log(dim('Runs now start signed in. Run npm run login again when it expires; add --no-session to a run to ignore it.'));
+    process.exit(0);
+  }
+
+  if (command === 'hosts') {
+    const also = typeof opts.also === 'string' ? opts.also.split(',').map((u) => u.trim()).filter(Boolean) : [];
+    const urls = [target, ...also];
+    console.log(`AutoQA hosts → ${urls.join(', ')}`);
+    const { seen, pages, signedIn } = await discoverHosts({ root: ROOT, urls });
+    console.log(signedIn ? '  signed in with the session saved by npm run login' : dim('  no saved session: pages behind a login will not load (run npm run login first)'));
+    for (const p of pages) {
+      const landed = new URL(p.landed);
+      console.log(`  opened ${p.url}\n    → ${landed.origin}${landed.pathname}${p.title ? `  (${p.title})` : ''}`);
+      if (/log-?in|sign-?in|auth/i.test(landed.pathname + landed.search) && landed.pathname !== new URL(p.url).pathname) {
+        console.log(yellow('    looks like a sign-in page: run npm run login, then this again'));
+      }
+    }
+    const { allowed, suggested, notNeeded } = classifyHosts(seen, target);
+    const list = (items, extra = () => '') => items.map((h) => `    ${String(h.count).padStart(4)}  ${h.origin}${extra(h)}`).join('\n');
+    console.log(`\nAlready allowed (${allowed.length})${allowed.length ? '\n' + list(allowed) : ''}`);
+    console.log(`\n${suggested.length ? green(`Needed, not yet allowed (${suggested.length})`) : 'Needed, not yet allowed: none'}${suggested.length ? '\n' + list(suggested) : ''}`);
+    if (notNeeded.length) console.log(`\n${dim(`Not needed, left out (${notNeeded.length})`)}\n${dim(list(notNeeded, (h) => `  (${h.reason})`))}`);
+    if (!suggested.length) process.exit(0);
+    const origins = suggested.map((h) => h.origin);
+    const settingsFile = path.join(ROOT, settings.file ?? '.env');
+    if (opts.write) {
+      const name = writeAllowedOrigins(settingsFile, origins);
+      console.log(green(`\nAdded ${origins.length} host(s) to ALLOWED_ORIGINS in ${name}.`));
+    } else {
+      console.log(`\nTo allow them, run again with --write, or add them to ALLOWED_ORIGINS in ${settings.file ?? '.env'}:\n  ${origins.join(',')}`);
+    }
+    console.log(dim('Pages the agent reaches later in a run can need more hosts; its report names any that were blocked.'));
+    process.exit(0);
+  }
+
+  if (command === 'review') {
+    // The run id is the first word after the command that is not a flag's value.
+    const rest = process.argv.slice(3);
+    const runIdArg = rest.find((arg, i) => !arg.startsWith('--') && !(i > 0 && rest[i - 1].startsWith('--')));
+    const { newestRunWithBugs } = await import('./review.mjs');
+    const id = runIdArg ?? newestRunWithBugs();
+    if (!id) throw new Error('No run with bug reports found in runs/.');
+    await runReview({ runId: id, parent: clickupParent(opts), port: Number(opts.port ?? 0), target });
+    process.exit(0);
+  }
+
   if (command === 'test') {
     const child = spawn('npx', ['playwright', 'test'], {
       cwd: ROOT,
@@ -550,14 +702,22 @@ async function main() {
   autoqa heal --url <target> [--headed] [--panel] [--model <id>]
   autoqa check-login --url <target> [--headed]
   autoqa test [--url <target>]
+  autoqa review [<run-id>] [--parent <ClickUp task ID or URL>]
+  autoqa login [--url <target>]
+  autoqa hosts [--url <target>] [--also <url,url>] [--write]
 
 Every command takes --site <name> to read .env.<name>; on a site/<name> branch that is the default.
-Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url).
+Sites with a login: set TEST_USERNAME and TEST_PASSWORD in .env (optional LOGIN_URL or --login-url),
+or sign in by hand once with login; runs then start from that saved session (--no-session ignores it).
+Test one feature against its PRD: generate --prd <file> (.docx, .pdf, .md or .txt).
 Apps that call another host (an API subdomain): set ALLOWED_ORIGINS in .env or pass --allow <host,host>.
+Find those hosts before a run: hosts (add --also <url> for other pages such as a checkout, --write to save them).
 Routes the agent must leave alone: set EXCLUDED_PATHS in .env or pass --exclude </path,/path>.
 Run limits: generate 60 minutes and 500 turns, heal 30 and 300, check-login 5 and 40.
 Change them with MAX_MINUTES and MAX_TURNS in .env, or --max-minutes and --max-turns.
-Stability check: the finished suite is run 3 times to find flaky tests. Change it with STABILITY_RUNS in .env or --stability-runs.`);
+Stability check: the finished suite is run 3 times to find flaky tests. Change it with STABILITY_RUNS in .env or --stability-runs.
+ClickUp: set CLICKUP_API_TOKEN in .env, then run review (newest run by default) or add --clickup to generate or heal.
+The parent task comes from --parent or CLICKUP_PARENT_TASK, and can be changed on the page.`);
 }
 
 main().catch((error) => {

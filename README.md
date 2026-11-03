@@ -144,6 +144,42 @@ This keeps credentials out of the AI's view, the logs and the repo. It is not a 
 
 Before a full run, `npm run check-login` confirms in about a minute that the test account can sign in.
 
+**Or sign in yourself.** For apps the agent cannot sign in to (2FA, single sign-on, a CAPTCHA), or when you would rather not put a password in `.env`:
+
+1. Run `npm run login`. A browser opens at `TARGET_URL` (or `LOGIN_URL`).
+2. Sign in as you normally would, then press Enter in the terminal.
+3. The session is saved to `.auth/user.json`. Every run after that starts signed in, and the tests it writes reuse the same session.
+
+Sessions expire. If the agent lands on the sign-in page, its report says so; run `npm run login` again. To go back to the test account, delete the `.auth` folder or add `--no-session` to a run. The agent cannot read `.auth/`, and the saved session takes the place of `TEST_USERNAME`/`TEST_PASSWORD` when both exist.
+
+## Test a feature against its PRD
+
+Give the agent a feature's PRD and it tests that feature requirement by requirement:
+
+```bash
+npm run login                                   # once, if the feature is behind a login
+npm run hosts -- --write                        # once per app: allow the hosts it needs
+npm run generate -- --prd ~/Downloads/PRD.docx  # .docx, .pdf, .md or .txt
+npm run review                                  # optional: send the bugs to ClickUp
+```
+
+The runner saves the PRD as `runs/<run-id>/prd.md`. The agent turns every testable requirement into a numbered case traced to its PRD section, automates what it can as Playwright tests, checks the rest by hand in the browser, and gives every case a result: pass, pass but different from the PRD, partial, fail, a product decision, inconclusive or not run. The report has the summary counts, the bugs by severity, the product questions the PRD leaves open, a table per PRD section, what was not covered and the test data it created. The HTML report shows the PRD in its own tab.
+
+A PDF needs `pdftotext` (`brew install poppler`). Things the agent cannot do alone are listed as not covered rather than skipped: real payments, emails, a second user or role, and pages on hosts outside `ALLOWED_ORIGINS` (add a checkout domain there if the feature uses one).
+
+## Send bugs to ClickUp
+
+After a run you can pick which bug reports become ClickUp tasks:
+
+1. Add your ClickUp API token to the app's settings file (`.env`, or `.env.<name>`): `CLICKUP_API_TOKEN=pk_...`. Optionally set a default parent task: `CLICKUP_PARENT_TASK=https://app.clickup.com/t/86abc123`.
+2. Run `npm run review` for the newest run with bugs, or `npm run review -- <run-id> --parent <task ID or URL>` for a specific one. To review straight after a run, add `--clickup` to `generate` or `heal`.
+3. The run report opens with a **Send bugs to ClickUp** box above the bug reports. Check the parent task, tick the bugs you want, and click **Create tasks**.
+4. Click **Finish review** (or press Ctrl+C in the terminal) when you are done.
+
+Each bug becomes a subtask of the parent task, in the parent's list, tagged `autoqa`. The task holds the full bug report as its description, a priority taken from the severity (critical is urgent, major is high, minor is normal), and the bug's screenshot as an attachment. A bug already sent from the same review is not created twice.
+
+The token stays in the runner: the page runs on your own machine only (`127.0.0.1`), needs a key that changes every time, and the agent is never given the token.
+
 ## What it can and cannot test
 
 **It works on** web apps reachable in a browser, at desktop and phone screen sizes, with or without a login.
@@ -165,13 +201,16 @@ This repo contains the agent and nothing else. The tests and reports it writes f
 
 ```bash
 npm run generate:demo    # explore, write and run tests, with a visible browser and the live panel
-npm run generate         # the same, in the background
+npm run generate         # the same, in the background (add -- --prd <file> to test a feature against its PRD)
 npm run heal:demo        # repair the suite after the app changed, with browser and panel
 npm run heal             # the same, in the background
 npm run check-login      # confirm the test account can sign in
+npm run login            # sign in yourself once; runs start from that saved session
+npm run hosts            # list the hosts the app needs that ALLOWED_ORIGINS is missing (-- --write saves them)
 npm test                 # replay the suite, no AI involved
 npm run test:ui          # replay it in Playwright's UI mode
 npm run report:html      # build and open the run report as one HTML page (newest run, or name a run id)
+npm run review           # pick bug reports to create as ClickUp subtasks (newest run, or name a run id)
 npm run report           # open Playwright's own HTML test report
 npm run panel            # open the live panel and replay a past run
 ```
@@ -179,7 +218,7 @@ npm run panel            # open the live panel and replay a past run
 **Other settings**, all optional and listed in `.env.example`:
 
 - `LOGIN_URL`: the sign-in page, if it is hard to find from the app's navigation.
-- `ALLOWED_ORIGINS`: other addresses your app needs, such as an API on a different host. The agent's browser blocks everything except your app's address and these.
+- `ALLOWED_ORIGINS`: other addresses your app needs, such as an API on a different host. The agent's browser blocks everything except your app's address and these. An app whose sign-in or data comes from other hosts (Firebase, a CDN, a payment form) stalls on its loading screen when one is missing. Run `npm run hosts` first: it opens the app (signed in, after `npm run login`) in an unrestricted browser, lists every host it contacts that is not allowed yet, and leaves out analytics, CAPTCHAs, other payment methods and chat widgets. Add `-- --also <url>` for other pages the feature uses, such as a checkout, and `-- --write` to save the hosts to the settings file.
 - `EXCLUDED_PATHS`: routes the agent must leave alone. To add them, open the app's settings file (`.env.<name>`, or `.env`) and list the paths with commas between them, for example `EXCLUDED_PATHS=/internal,/api/billing`. Each path starts with `/` and covers everything under it. For a single run, pass `--exclude /internal,/api/billing` instead. Nothing else is skipped, so an admin area you do not list gets tested, and the report names the routes that were left out.
 - `MAX_MINUTES` and `MAX_TURNS`: the run limits. Every run stops by itself when it reaches either one, so a run that gets stuck or keeps repeating a step cannot go on for hours. A turn is one step the agent takes, such as opening a page or writing a file. The defaults are 60 minutes and 500 turns for `generate`, 30 and 300 for `heal`, and 5 and 40 for `check-login`, about three times a normal run. To change them, set them in the app's settings file, for example `MAX_MINUTES=120` and `MAX_TURNS=900`, or pass `--max-minutes 120 --max-turns 900` for a single run. A stopped run keeps what it wrote and says which limit it reached.
 - `STABILITY_RUNS`: the stability check. Once the suite is written and every failure is explained, the agent runs it three times in a row and compares the results. A test that passes on one run and fails on another is flaky: the agent fixes it and repeats the runs, so every report states how many tests are flaky and how many runs that rests on. To change the number, set for example `STABILITY_RUNS=5` in the app's settings file, or pass `--stability-runs 5` for a single run. `1` switches the check off.

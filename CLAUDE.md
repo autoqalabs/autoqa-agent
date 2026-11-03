@@ -22,6 +22,7 @@ This repo is an AI testing agent. It is driven by Claude Code in headless mode (
 | `generated-tests/fixtures.ts` | Shared fixtures (page objects, test data) |
 | `generated-tests/auth.setup.ts` | Only for sites with a login: signs in once and saves the session to `.auth/user.json` |
 | `runs/<run-id>/` | Per-run output: `journeys.md`, `report.md`, `summary.json`, `bugs/`, `events.jsonl`. The runner builds `report.html` from these when you finish; do not write it yourself |
+| `runs/<run-id>/prd.md` | Only on PRD runs: the feature's requirements, saved by the runner. Read it, never edit it; follow the `prd-testing` skill |
 | `playwright.config.ts` | Reads the target from `TARGET_URL` |
 
 ## Commands

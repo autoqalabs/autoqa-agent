@@ -13,7 +13,10 @@
     "test": "node bin/autoqa.mjs test",
     "test:ui": "playwright test --ui",
     "report": "npx playwright show-report",
-    "report:html": "node bin/report-html.mjs --open"
+    "report:html": "node bin/report-html.mjs --open",
+    "review": "node bin/autoqa.mjs review",
+    "login": "node bin/autoqa.mjs login",
+    "hosts": "node bin/autoqa.mjs hosts"
   },
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",

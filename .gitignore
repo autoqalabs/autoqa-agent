@@ -13,3 +13,7 @@ runs/*/browser/
 runs/*/events.jsonl
 runs/*/mcp.json
 runs/*/settings.json
+# macOS folder files
+.DS_Store
+# extra local settings copies (.env_1, .env_old)
+.env_*
