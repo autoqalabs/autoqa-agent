@@ -13,7 +13,10 @@ const baseURL = process.env.TARGET_URL ?? 'https://autoqalabs-demo-store.vercel.
 // Sites with a login: generated-tests/auth.setup.ts signs in once with the test
 // account and saves the session to .auth/user.json. Specs that need to be signed
 // in opt in with test.use({ storageState: AUTH_FILE }) from the fixtures.
-const hasAuthSetup = existsSync('generated-tests/auth.setup.ts');
+// A session saved by hand with `autoqa login` (.auth/session.json) already is
+// that file, so the setup step is skipped rather than overwriting it.
+const manualSession = existsSync('.auth/session.json');
+const hasAuthSetup = existsSync('generated-tests/auth.setup.ts') && !manualSession;
 const dependencies = hasAuthSetup ? ['setup'] : [];
 
 export default defineConfig({

@@ -8,6 +8,8 @@
 //   node bin/report-html.mjs <run-id>      one run
 //   node bin/report-html.mjs --all         every run
 //   add --open to open the result in the browser
+//
+// bin/review.mjs serves the same page with a ClickUp picker on the bug reports.
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -61,6 +63,9 @@ function summaryCounts(runDir, markdown, isHeal) {
         failed: s.failed,
         flaky: Number.isInteger(s.flaky) ? s.flaky : null,
         stabilityRuns: Number.isInteger(s.stability_runs) && s.stability_runs > 1 ? s.stability_runs : null,
+        // PRD runs also count partly met requirements and open ones (decisions, not run)
+        partial: Number.isInteger(s.partial) ? s.partial : null,
+        open: Number.isInteger(s.open) ? s.open : null,
       };
     }
   } catch {
@@ -139,11 +144,146 @@ section.doc{background:var(--card);border:1px solid var(--line);border-radius:12
 figure{margin:16px 0 0}figure img{max-width:100%;border:1px solid var(--line);border-radius:8px;display:block}
 figcaption{font-size:13px;color:var(--muted);margin-top:6px}
 footer{color:var(--muted);font-size:13px;text-align:center;padding:0 0 40px}
-@media print{body{background:#fff}nav.tabs{display:none}section.doc{border:0;padding:0;break-inside:auto}.bug{break-inside:avoid}main{padding-top:10px}}
+.cu{margin:18px 0 6px;padding:18px 20px;border:1px solid var(--line);border-radius:10px;background:var(--bg);display:grid;gap:14px}
+.cu h2{margin:0;font-size:17px}.cu p{margin:0;color:var(--muted);font-size:14px}
+.cu label.field{display:grid;gap:6px;font-size:13px;font-weight:600}
+.cu input[type=text]{width:100%;max-width:520px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font:14px ui-monospace,"Cascadia Code",Consolas,monospace}
+.cu .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;font-size:14px}
+.cu .count{margin-left:auto;color:var(--muted)}
+.cu ul{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.cu li{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 12px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.cu li:last-child{border-bottom:0}
+.cu li label{display:flex;align-items:flex-start;gap:10px;flex:1 1 280px;min-width:0;cursor:pointer;font-size:14.5px}
+.cu li input{margin-top:4px;accent-color:var(--accent)}
+.cu li .t{min-width:0;overflow-wrap:anywhere}
+.cu li .badge{margin:1px 0 0;flex:none;font-size:11px}
+.cu li.done .t{color:var(--muted)}
+.cu .status{margin-left:auto;font-size:13px;text-align:right}.cu .status:empty{display:none}
+.cu .status a{color:var(--accent);font-weight:600}
+.cu .error{color:var(--fail)}.cu .ok{color:var(--pass)}.cu .warn{color:var(--warn)}
+.cu button{font:600 14px "Segoe UI",system-ui,sans-serif;border-radius:8px;padding:9px 16px;cursor:pointer}
+.cu button.link{background:none;border:0;padding:0;color:var(--accent)}
+.cu button.primary{background:var(--accent);color:var(--card);border:1px solid var(--accent)}
+.cu button.secondary{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.cu button:disabled{opacity:.45;cursor:not-allowed}
+.cu button:focus-visible,.cu input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media print{body{background:#fff}nav.tabs,.cu{display:none}section.doc{border:0;padding:0;break-inside:auto}.bug{break-inside:avoid}main{padding-top:10px}}
 `;
 
 /** Build report.html for one run folder. Returns its path, or null if the run has no report. */
 export function buildHtmlReport(runDir) {
+  const html = renderHtmlReport(runDir);
+  if (!html) return null;
+  const out = path.join(runDir, 'report.html');
+  writeFileSync(out, html);
+  return out;
+}
+
+/**
+ * The ClickUp picker shown above the bug reports. Only on the page that
+ * bin/review.mjs serves: the saved report.html never has it.
+ */
+function reviewPanel(bugs, review) {
+  // JSON inside <script> must not be able to close the tag.
+  const config = JSON.stringify({ key: review.sessionKey }).replace(/</g, '\\u003c');
+  return `<div class="cu" id="clickup">
+  <h2>Send bugs to ClickUp</h2>
+  <p>Each bug you tick becomes a subtask of the parent task, in the same list, with its screenshot attached.</p>
+  <label class="field" for="cu-parent">Parent task ID or URL
+    <input id="cu-parent" type="text" value="${escapeHtml(review.defaultParent ?? '')}" placeholder="https://app.clickup.com/t/86abc123" autocomplete="off">
+  </label>
+  <div class="bar">
+    <button type="button" class="link" id="cu-all">Select all</button>
+    <button type="button" class="link" id="cu-none">Select none</button>
+    <span class="count" id="cu-count"></span>
+  </div>
+  <ul>
+${bugs.map((bug) => `    <li data-bug="${escapeHtml(bug.id)}">
+      <label><input type="checkbox" class="cu-check" value="${escapeHtml(bug.id)}" checked>${bug.severity ? `<span class="badge ${escapeHtml(bug.severity)}">${escapeHtml(bug.severity)}</span>` : ''}<span class="t">${escapeHtml(bug.title)}</span></label>
+      <span class="status" aria-live="polite"></span>
+    </li>`).join('\n')}
+  </ul>
+  <div class="bar">
+    <button type="button" class="primary" id="cu-create">Create tasks</button>
+    <button type="button" class="secondary" id="cu-finish">Finish review</button>
+    <span id="cu-msg" role="status"></span>
+  </div>
+</div>
+<script>
+(() => {
+  const { key } = ${config};
+  const checks = [...document.querySelectorAll('.cu-check')];
+  const create = document.getElementById('cu-create');
+  const finish = document.getElementById('cu-finish');
+  const parent = document.getElementById('cu-parent');
+  const msg = document.getElementById('cu-msg');
+  const selected = () => checks.filter((c) => c.checked && !c.disabled).map((c) => c.value);
+  const refresh = () => {
+    const n = selected().length;
+    document.getElementById('cu-count').textContent = n + ' selected';
+    create.textContent = n === 1 ? 'Create 1 task' : 'Create ' + n + ' tasks';
+    create.disabled = n === 0;
+  };
+  const say = (text, kind) => { msg.textContent = text; msg.className = kind || ''; };
+  const post = async (url, body) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-review-key': key }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed (' + res.status + ')');
+    return data;
+  };
+  checks.forEach((c) => c.addEventListener('change', refresh));
+  document.getElementById('cu-all').addEventListener('click', () => { checks.forEach((c) => { if (!c.disabled) c.checked = true; }); refresh(); });
+  document.getElementById('cu-none').addEventListener('click', () => { checks.forEach((c) => { if (!c.disabled) c.checked = false; }); refresh(); });
+  create.addEventListener('click', async () => {
+    const ids = selected();
+    if (!parent.value.trim()) { say('Enter the parent task ID or URL.', 'error'); parent.focus(); return; }
+    create.disabled = true;
+    say('Creating ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + ' in ClickUp…');
+    try {
+      const data = await post('/api/clickup/tasks', { parent: parent.value, bugIds: ids });
+      let ok = 0, failed = 0;
+      for (const r of data.results) {
+        const row = document.querySelector('li[data-bug="' + CSS.escape(r.bugId) + '"]');
+        if (!row) continue;
+        const status = row.querySelector('.status');
+        const check = row.querySelector('.cu-check');
+        status.textContent = '';
+        status.className = 'status';
+        if (r.ok) {
+          ok++;
+          check.checked = false; check.disabled = true; row.classList.add('done');
+          const a = document.createElement('a');
+          a.href = r.url; a.target = '_blank'; a.rel = 'noopener';
+          a.textContent = r.alreadyCreated ? 'Already created' : 'Open task';
+          status.append(a);
+          if (r.warning) { const w = document.createElement('div'); w.className = 'warn'; w.textContent = r.warning; status.append(w); }
+        } else {
+          failed++;
+          status.textContent = r.error || 'Failed';
+          status.classList.add('error');
+        }
+      }
+      const where = ' under "' + data.parent.name + '"';
+      say(failed ? ok + ' created, ' + failed + ' failed' + where + '. Click Create again to retry the failed ones.' : ok + ' task' + (ok === 1 ? '' : 's') + ' ready' + where + '.', failed ? 'error' : 'ok');
+    } catch (error) {
+      say(error.message, 'error');
+    }
+    refresh();
+  });
+  finish.addEventListener('click', async () => {
+    try {
+      await post('/api/finish', {});
+      create.disabled = true; finish.disabled = true;
+      say('Review finished. You can close this tab.', 'ok');
+    } catch (error) { say(error.message, 'error'); }
+  });
+  refresh();
+})();
+</script>`;
+}
+
+/** The report page as an HTML string, or null if the run has no report. Pass `review` for the ClickUp picker. */
+export function renderHtmlReport(runDir, { review } = {}) {
   const id = path.basename(runDir);
   const reportFile = REPORT_FILES.map((f) => path.join(runDir, f)).find(existsSync);
   if (!reportFile) return null;
@@ -168,7 +308,8 @@ export function buildHtmlReport(runDir) {
   const body = report.replace(/^#\s+.+\r?\n/m, ''); // the title is shown in the header
   const isHeal = /-heal$/.test(id);
   const counts = summaryCounts(runDir, report, isHeal);
-  const kind = isHeal ? 'Self-healing run' : /-generate$/.test(id) ? 'Explore and generate run' : 'Run';
+  const prd = read(path.join(runDir, 'prd.md'));
+  const kind = isHeal ? 'Self-healing run' : prd ? 'PRD test run' : /-generate$/.test(id) ? 'Explore and generate run' : 'Run';
   const stamp = id.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);
   const when = stamp ? `${stamp[1]}-${stamp[2]}-${stamp[3]} ${stamp[4]}:${stamp[5]} UTC` : '';
 
@@ -181,6 +322,7 @@ export function buildHtmlReport(runDir) {
 
   const extras = [
     ['test-plan', 'Test plan', read(path.join(runDir, 'test-plan.md'))],
+    ['prd', 'PRD', prd],
     ['journeys', 'Journey map', read(path.join(runDir, 'journeys.md'))],
   ].filter(([, , text]) => text);
 
@@ -189,6 +331,8 @@ export function buildHtmlReport(runDir) {
       <div class="tile"><div class="n">${counts.tests}</div><div class="l">Tests</div></div>
       <div class="tile"><div class="n pass">${counts.passed}</div><div class="l">${isHeal ? 'Passed after repair' : 'Passed'}</div></div>
       <div class="tile"><div class="n${counts.failed ? ' fail' : ''}">${counts.failed}</div><div class="l">${isHeal ? 'Still failing' : 'Failed'}</div></div>
+      ${counts.partial === null || counts.partial === undefined ? '' : `<div class="tile"><div class="n">${counts.partial}</div><div class="l">Partial</div></div>`}
+      ${counts.open === null || counts.open === undefined ? '' : `<div class="tile"><div class="n">${counts.open}</div><div class="l">Open</div></div>`}
       ${counts.flaky === null ? '' : `<div class="tile"><div class="n">${counts.flaky}</div><div class="l">${counts.stabilityRuns ? `Flaky in ${counts.stabilityRuns} runs` : 'Flaky'}</div></div>`}
       <div class="tile"><div class="n${bugs.length ? ' fail' : ''}">${bugs.length}</div><div class="l">Bug reports</div></div>
     </div>`
@@ -217,6 +361,7 @@ export function buildHtmlReport(runDir) {
 <main><div class="wrap">
 <section class="doc md" id="report"><p class="kicker">Report</p>${render(body)}</section>
 ${bugs.length ? `<section class="doc" id="bugs"><p class="kicker">Bug reports</p>
+${review ? reviewPanel(bugs, review) : ''}
 ${bugs.map((bug) => `<article class="bug md" id="bug-${bug.id}">
 ${bug.severity ? `<span class="badge ${escapeHtml(bug.severity)}">${escapeHtml(bug.severity)}</span>` : ''}
 ${bug.html}
@@ -251,9 +396,7 @@ ${extras.map(([anchor, label, text]) => `<section class="doc md" id="${anchor}">
 </html>
 `;
 
-  const out = path.join(runDir, 'report.html');
-  writeFileSync(out, html);
-  return out;
+  return html;
 }
 
 function runsWithReports() {
